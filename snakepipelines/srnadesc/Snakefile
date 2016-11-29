@@ -1,0 +1,153 @@
+import os
+import subprocess
+#import pandas as pd
+
+
+#########################
+## Pipeline configuration
+##########################
+configfile:"config.yaml"
+
+# working directory (will be cleaned at the end)
+WORKING_DIR = config["workdir"]
+
+# Input files
+FQ_DIR = config["fastqdir"]
+SPIKES = config["refs"]["spikes"]
+SPIKES_BASENAME = os.path.basename(SPIKES)
+
+# Bowtie2 parameters
+BOWTIE2_PARAMS_SPIKES = config["bowtie2"]["spikes_params"]
+BOWTIE2_PARAMS = config["bowtie2"]["general_params"]
+
+# Reference fasta files and basename (just the fasta filename)
+VIRUS = config["refs"]["virus"]
+VIRUS_BASENAME = os.path.basename(VIRUS)
+GENOME = config["refs"]["genome"]
+GENOME_BASENAME = os.path.basename(GENOME)
+TRANSCRIPTOME = config["refs"]["transcriptome"]
+
+# read length parameters for trimming
+MIN_LEN = config["trim"]["min_length"]
+MAX_LEN = config["trim"]["max_length"]
+
+# Other parameters
+THREADS = 10
+
+####################
+## Desired outputs
+####################
+
+# Snakefile and config file used
+MASTER_FILES = ["results/Snakefile.leaf","results/config.yaml"]
+
+rule all: 
+	input: 		
+		expand("spikes/bam/{sample}_unaligned.fastq",sample=config["samples"])
+	message:"All done!"
+     
+#####################
+## Copy master files
+####################
+rule copy_master_files:
+    output: 
+        "results/Snakefile.leaf",
+        "results/config.yaml"
+    shell:
+        "cp {input} results/"
+     
+######################################################################################################### 
+## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using RFAM database (restricted to Solanum lycopersicum 
+##########################################################################################################
+rule map_to_solyc_rfam:
+    input: "virus/{sample}_unaligned.fastq"
+    output: aln = temp("rfam/solyc/{sample}_aln.sam"),
+	    un = "rfam/solyc/{sample}_unaligned.fastq"
+    message:"mapping {wildcards.sample} reads to RFAM database for S.lycopersicum"
+    log:
+        "log/{sample}_aln2rfam_log.txt"
+    shell:"bowtie2 {BOWTIE2_PARAMS} -x {SOLYC_RFAM_BOWTIE2} --un {output.un} -U {input} -S {output.aln} 2>{log}"
+
+###########################################
+## removal of plant virus from all samples
+##########################################
+rule map_to_plant_virus:
+    input: 
+        index = ["index/" + VIRUS_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]],
+        reads = "trim/{sample}.trimmed.fastq" 
+    output:
+        aln = temp("virus/{sample}_aln.sam"),
+        un = "virus/{sample}_unaligned.fastq"
+    log:"log/{sample}_aln2virus_log.txt"
+    message:"mapping {wildcards.sample} reads to plant virus sequences" 
+    shell:"bowtie2 {BOWTIE2_PARAMS} -x {input.index} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_virus_index:
+    input:
+        VIRUS
+    output:
+        ["index/" + VIRUS_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]]
+    message:"creating bowtie2 index for {VIRUS}"
+    params:"index" + VIRUS_BASENAME
+    version:"2.1.0"
+    shell:"bowtie2-build {VIRUS} {params}"
+
+#############################
+## Trim reads for all samples
+#############################
+rule count_trimmed:
+    input:
+        "trim/{sample}.trimmed.fastq"
+    output:
+        "results/counts/{sample}.02_trimmed.counts.txt"
+    message:"counting {wildcards.sample} sequences after trimming"
+
+rule trim_reads:
+    input:
+        fqs= FQ_DIR + "{sample}.fastq"
+    output:
+        "trim/{sample}.trimmed.fastq"
+    message: "Trimming reads shorter than {0} and longer than {1}".format(MIN_LEN,MAX_LEN)
+    shell:"""
+	  cat {input} | paste - - - - | awk 'length($2)  >= {MIN_LEN} && length($2) <= {MAX_LEN}' |sed 's/\\t/\\n/g' > {output}
+	  """
+
+##################
+## Spikes analysis
+##################
+rule aln2spikes:
+    input:
+        fq= FQ_DIR + "{sample}.fastq",
+        index = ["index/" + SPIKES_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]]
+    output:
+        aln = temp("spikes/bam/{sample}_spike_aln.sam"),
+        un = "spikes/bam/{sample}_unaligned.fastq"
+    message: "Aligning {wildcards.sample} reads to spike sequences."
+    log:"logs/spikes/bam/{sample}_log.txt"
+    shell:
+        "bowtie2 {BOWTIE2_PARAMS_SPIKES} -x {input.index} --un {output.un} -U {input} -S {output.aln} 2>{log}"
+
+rule make_spike_index:
+    input:
+        SPIKES
+    output:
+        ["index/" + SPIKES_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]]
+    message:"creating bowtie2 index for {SPIKES}"
+    params:"index" + SPIKES_BASENAME
+    version:"2.1.0"
+    shell:"bowtie2-build {SPIKES} {params}"
+
+#####################################################
+## Count sequence occurences in the different samples
+##################################################### 
+rule count_original_seqs:
+    input:
+        fq= FQ_DIR + "{sample}.fastq"
+    output:
+        "results/counts/{sample}.01_original.txt"
+    message:"counting {wildcards.sample}"
+    params:"01.original"
+    shell:
+        "python ../../scripts/count_seqs_in_fastqs.py "
+        "-f {input} -o {outfile} -f1 {wildcards.sample} -f2 {params}"
+

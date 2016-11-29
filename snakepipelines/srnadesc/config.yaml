@@ -1,0 +1,35 @@
+---
+threads: 5
+fastqdir: "../../data/01.sequencing/20151007_sRNAs/"
+workdir: "/zfs/scratch/mgalland_temp/srnas/"
+samples: ["LA4024","LA1777","C32"]
+# genomic and other references
+refs:
+  genome: "../../data/02.refs/ITAG2.3/Solanum_lycopersicum.SL2.40.22.dna.genome.names_modified.fa"
+  transcriptome: "../../data/02.refs/ITAG2.3/Solanum_lycopersicum.SL2.40.22.cdna.all.fa"
+  spikes: "../../data/02.refs/spikes/SSPK_v3_removeOldSeq.fa"
+  virus: "../../data/02.refs/virus/allplantseqs.fasta" 
+  mirbase: 
+    mature: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_mature_mirbase_v21.dna.fasta"
+    hairpin: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_stemloop_mirbase_v21.dna.fasta"
+
+# Short read aligners
+bowtie2:
+  spikes_params:
+    seedlength:                                 "-L 6"
+    interval_between_seeds:                     "-i S,0,0.5"
+    do_not_aln_to_reverse_strand:               "--norc"
+    read_gap_open_and_extend_penalties:         "--rdg 1,6"
+    reference_gap_open_and_extend_penalties:    "--rfg 1,6"
+    min_score_to_be_valid:                      "--score-min L,-1,-0.6"
+  general_params:
+    seedlength:                                 "-L 6"
+    interval_between_seeds:                     "-i S,0,0.5"
+    do_not_aln_to_reverse_strand:               "--norc"
+    read_gap_open_and_extend_penalties:         "--rdg 1,6"
+    reference_gap_open_and_extend_penalties:    "--rfg 1,6"
+
+# Trimming parameters
+trim:
+  min_length: "18"
+  max_length: "25"
