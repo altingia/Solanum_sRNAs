@@ -17,14 +17,13 @@ SPIKES = config["refs"]["spikes"]
 SPIKES_BASENAME = os.path.basename(SPIKES)
 
 # Bowtie2 parameters
-BOWTIE2_PARAMS_SPIKES = config["bowtie2"]["spikes_params"]
-BOWTIE2_PARAMS = config["bowtie2"]["general_params"]
+BOWTIE2_PARAMS_SPIKES = " ".join(config["bowtie2"]["spikes_params"].values())
+BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
 
 # Reference fasta files and basename (just the fasta filename)
 VIRUS = config["refs"]["virus"]
-VIRUS_BASENAME = os.path.basename(VIRUS)
-GENOME = config["refs"]["genome"]
-GENOME_BASENAME = os.path.basename(GENOME)
+RFAM = config["refs"]["rfam"]
+#GENOME = config["refs"]["genomes"]
 TRANSCRIPTOME = config["refs"]["transcriptome"]
 
 # read length parameters for trimming
@@ -38,75 +37,190 @@ THREADS = 10
 ## Desired outputs
 ####################
 
+# Counts
+SEQCOUNTS = expand("results/counts/{sample}.{step}.txt",sample=config["samples"],step=["01_original","02_spikes","03_trimmed","04_virus","05_ncRNA"])
+
+# ShortStack
+SHORTSTACK = expand(WORKING_DIR + "shortstack/{sample}/Results.txt",sample=config["samples"])
 # Snakefile and config file used
-MASTER_FILES = ["results/Snakefile.leaf","results/config.yaml"]
+MASTER_FILES = ["results/Snakefile","results/config.yaml"]
+
+
 
 rule all: 
 	input: 		
-		expand("spikes/bam/{sample}_unaligned.fastq",sample=config["samples"])
+		SEQCOUNTS,
+		SHORTSTACK,
+		MASTER_FILES
 	message:"All done!"
      
 #####################
 ## Copy master files
 ####################
 rule copy_master_files:
+    input:
+        "Snakefile",
+        "config.yaml"
     output: 
-        "results/Snakefile.leaf",
+        "results/Snakefile",
         "results/config.yaml"
     shell:
         "cp {input} results/"
+
+
+#########################################################################
+## Intersection with known miRNA (from miRNA gff3 genome annotation file)
+#########################################################################
+
+
+####################################################
+## Shortstack analysis based on Solanum lycopersicum
+####################################################
+rule shortstack_with_Heinz_genome:
+    input:
+        reads =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
+        genome = config["refs"]["genomes"]["Heinz"]
+    output:
+        WORKING_DIR + "shortstack/{sample}/Results.txt"
+    message:"Shortstack analysis using {input.genome}"
+    version:"3.6"
+    params:
+        WORKING_DIR + "shortstack/{wildcards.sample}/"
+    shell:
+        "ShortStack "
+        "--outdir {params} "
+        "-bowtie_cores {THREADS} "
+        "--sort_mem 4Go"		# to sort BAM files
+        "--mismatches 1"		# allows up to 1 mismatch for a valid alignment		
+        "--bowtie_m 50"			# number of possible alignments
+	"--mmap u"			# unique seeded guide for handling multi-mapped reads
+	"--dicermin 20"
+        "--dicermax 24"
+        "--foldsize 300"		# size of genomic RNA segments for folding for MIRNA search
+	"--pad 75"			# clusters of sRNAs merged if distance less/equal to pad value
+        "--mincov 5"			# clusters of small RNAs must have at least this many alignments
+        "--readfile {input.reads} "
+        "--genome {input.genome}"
+
      
-######################################################################################################### 
-## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using RFAM database (restricted to Solanum lycopersicum 
-##########################################################################################################
-rule map_to_solyc_rfam:
-    input: "virus/{sample}_unaligned.fastq"
-    output: aln = temp("rfam/solyc/{sample}_aln.sam"),
-	    un = "rfam/solyc/{sample}_unaligned.fastq"
-    message:"mapping {wildcards.sample} reads to RFAM database for S.lycopersicum"
-    log:
-        "log/{sample}_aln2rfam_log.txt"
-    shell:"bowtie2 {BOWTIE2_PARAMS} -x {SOLYC_RFAM_BOWTIE2} --un {output.un} -U {input} -S {output.aln} 2>{log}"
+#################################################################################
+## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
+#################################################################################
+rule count_ncRNA:
+    input:
+        WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
+    output:
+        "results/counts/{sample}.05_ncRNA.txt"
+    message:"counting {wildcards.sample} sequences after alignment to non-coding RNA sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 05.ncRNA"
+
+rule map_to_ncRNAs:
+    input:
+        reads = WORKING_DIR + "virus/{sample}_unaligned.fastq",
+        index = [WORKING_DIR + "index/ncRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    output:
+        aln = WORKING_DIR + "ncRNA/{sample}_aln.sam",
+	un =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
+    message:"mapping {wildcards.sample} reads to non-coding RNA database"
+    log:"results/logs/{sample}_aln2rfam.txt"
+    params:
+        "index/ncRNA"
+    shell:
+        "bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_ncRNA_index:
+    input:
+        WORKING_DIR + "ncRNA/ncRNA.fasta"
+    output:
+        [WORKING_DIR + "index/ncRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for {input}"
+    version:"2.1.0"
+    shell:"bowtie2-build -q {input} " + WORKING_DIR + "index/ncRNA"
+
+rule merge_RFAM_TIGR_repeats:
+    input:
+        tigr = config["refs"]["tigr"]["rDNA"],
+        rfam = WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
+    output: 
+        WORKING_DIR + "ncRNA/ncRNA.fasta"
+    message:"merging RFAM and TIGR repeats (only ribosomal DNA) databases"
+    shell:"cat {input} >> {output}"
+          
+rule parse_RFAM_db:
+    input:
+        WORKING_DIR + "ncRNA/RFAM.gz"
+    output:
+        WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
+    message:"keeping records for Solanum lycopersicum species"
+    shell:
+        "zcat {input} |grep -A1 'Solanum lycopersicum' | " # this keeps records for tomato
+        "sed -e '/microRNA/,+1d' > {output}" 		   # this removes the line and the following line when it matches microRNA
+
+rule get_RFAM_database:
+    output:
+        rfam = WORKING_DIR + "ncRNA/RFAM.gz"
+    message:"downloading last release of RFAM database"
+    params:
+        rfam = WORKING_DIR + "ncRNA/RFAM.gz",
+        rfamlink = config["refs"]["rfam"],
+    shell:
+        "wget -r --quiet --output-document {params.rfam} {params.rfamlink};" 
 
 ###########################################
 ## removal of plant virus from all samples
 ##########################################
+rule count_virus:
+    input:
+        WORKING_DIR + "virus/{sample}_unaligned.fastq"
+    output:
+        "results/counts/{sample}.04_virus.txt"
+    message:"counting {wildcards.sample} sequences after alignment to virus sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 04.virus"
+
 rule map_to_plant_virus:
     input: 
-        index = ["index/" + VIRUS_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]],
-        reads = "trim/{sample}.trimmed.fastq" 
+        index = ["index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]],
+        reads =  WORKING_DIR + "trim/{sample}.trimmed.fastq" 
     output:
-        aln = temp("virus/{sample}_aln.sam"),
-        un = "virus/{sample}_unaligned.fastq"
-    log:"log/{sample}_aln2virus_log.txt"
+        aln = WORKING_DIR + "virus/{sample}_aln.sam",
+        un = WORKING_DIR + "virus/{sample}_unaligned.fastq"
+    log: "results/logs/{sample}_aln2virus.txt"
     message:"mapping {wildcards.sample} reads to plant virus sequences" 
-    shell:"bowtie2 {BOWTIE2_PARAMS} -x {input.index} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+    version: "2.1.0"
+    params:"index/virus"
+    shell:"bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
 
 rule make_virus_index:
     input:
         VIRUS
     output:
-        ["index/" + VIRUS_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]]
+        ["index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     message:"creating bowtie2 index for {VIRUS}"
-    params:"index" + VIRUS_BASENAME
     version:"2.1.0"
-    shell:"bowtie2-build {VIRUS} {params}"
+    shell:"bowtie2-build -q {VIRUS} index/virus"
 
 #############################
 ## Trim reads for all samples
 #############################
 rule count_trimmed:
     input:
-        "trim/{sample}.trimmed.fastq"
+        WORKING_DIR + "trim/{sample}.trimmed.fastq"
     output:
-        "results/counts/{sample}.02_trimmed.counts.txt"
+        "results/counts/{sample}.03_trimmed.txt"
     message:"counting {wildcards.sample} sequences after trimming"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 03.trimmed"
 
 rule trim_reads:
     input:
-        fqs= FQ_DIR + "{sample}.fastq"
+        WORKING_DIR + "spikes/{sample}_unaligned.fastq"
     output:
-        "trim/{sample}.trimmed.fastq"
+        WORKING_DIR + "trim/{sample}.trimmed.fastq"
     message: "Trimming reads shorter than {0} and longer than {1}".format(MIN_LEN,MAX_LEN)
     shell:"""
 	  cat {input} | paste - - - - | awk 'length($2)  >= {MIN_LEN} && length($2) <= {MAX_LEN}' |sed 's/\\t/\\n/g' > {output}
@@ -115,27 +229,39 @@ rule trim_reads:
 ##################
 ## Spikes analysis
 ##################
+rule count_spikes:
+    input:
+        un =  WORKING_DIR + "spikes/{sample}_unaligned.fastq"
+    output:
+        "results/counts/{sample}.02_spikes.txt"
+    message:"counting {wildcards.sample} original reads"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 02.spikes"
+
 rule aln2spikes:
     input:
         fq= FQ_DIR + "{sample}.fastq",
-        index = ["index/" + SPIKES_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]]
+        index = ["index/spikes" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     output:
-        aln = temp("spikes/bam/{sample}_spike_aln.sam"),
-        un = "spikes/bam/{sample}_unaligned.fastq"
+        aln = WORKING_DIR + "spikes/{sample}_spike_aln.sam",
+        un =  WORKING_DIR + "spikes/{sample}_unaligned.fastq"
     message: "Aligning {wildcards.sample} reads to spike sequences."
-    log:"logs/spikes/bam/{sample}_log.txt"
+    log:"results/logs/{sample}_spikes.txt"
+    version: "2.1.0"
+    params:"index/spikes"
     shell:
-        "bowtie2 {BOWTIE2_PARAMS_SPIKES} -x {input.index} --un {output.un} -U {input} -S {output.aln} 2>{log}"
+        "bowtie2 {BOWTIE2_PARAMS_SPIKES} -p {THREADS} -x {params} --un {output.un} -U {input.fq} -S {output.aln} 2>{log}"
 
 rule make_spike_index:
     input:
         SPIKES
     output:
-        ["index/" + SPIKES_BASENAME + x for x in [".1.bt1",".2.bt2","3.bt3","4.bt2","rev.1.bt2","rev.2.bt2"]]
+        ["index/spikes" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     message:"creating bowtie2 index for {SPIKES}"
-    params:"index" + SPIKES_BASENAME
     version:"2.1.0"
-    shell:"bowtie2-build {SPIKES} {params}"
+    shell:
+        "bowtie2-build -q {SPIKES} index/spikes"
 
 #####################################################
 ## Count sequence occurences in the different samples
@@ -145,9 +271,8 @@ rule count_original_seqs:
         fq= FQ_DIR + "{sample}.fastq"
     output:
         "results/counts/{sample}.01_original.txt"
-    message:"counting {wildcards.sample}"
-    params:"01.original"
+    message:"counting {wildcards.sample} original reads"
     shell:
-        "python ../../scripts/count_seqs_in_fastqs.py "
-        "-f {input} -o {outfile} -f1 {wildcards.sample} -f2 {params}"
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 01.original"
 
