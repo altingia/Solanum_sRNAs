@@ -8,6 +8,9 @@ import subprocess
 ##########################
 configfile:"config.yaml"
 
+wildcard_constraints:
+  dataset="[Aa-Zz0-9]+"
+
 # working directory (will be cleaned at the end)
 WORKING_DIR = config["workdir"]
 
@@ -23,8 +26,10 @@ BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
 # Reference fasta files and basename (just the fasta filename)
 VIRUS = config["refs"]["virus"]
 RFAM = config["refs"]["rfam"]
-#GENOME = config["refs"]["genomes"]
 TRANSCRIPTOME = config["refs"]["transcriptome"]
+
+# EMBOSS inverted repeats
+EINVERTED = config["emboss"]["einvert"]["executable"]
 
 # read length parameters for trimming
 MIN_LEN = config["trim"]["min_length"]
@@ -41,7 +46,7 @@ THREADS = 10
 SEQCOUNTS = expand("results/counts/{sample}.{step}.txt",sample=config["samples"],step=["01_original","02_spikes","03_trimmed","04_virus","05_ncRNA"])
 
 # ShortStack
-SHORTSTACK = expand(WORKING_DIR + "shortstack/{sample}/Results.txt",sample=config["samples"])
+SHORTSTACK = expand("results/shortstack/{sample}/Results.txt",sample=config["samples"])
 # Snakefile and config file used
 MASTER_FILES = ["results/Snakefile","results/config.yaml"]
 
@@ -51,7 +56,8 @@ rule all:
 	input: 		
 		SEQCOUNTS,
 		SHORTSTACK,
-		MASTER_FILES
+		MASTER_FILES,
+		expand(WORKING_DIR + "shortstack/einvert/{genome}_inverted_repeats.inv",genome=["LA0716","Heinz","LA2157","LYC4"])
 	message:"All done!"
      
 #####################
@@ -81,27 +87,73 @@ rule shortstack_with_Heinz_genome:
         reads =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
         genome = config["refs"]["genomes"]["Heinz"]
     output:
-        WORKING_DIR + "shortstack/{sample}/Results.txt"
-    message:"Shortstack analysis using {input.genome}"
+        "results/shortstack/{sample}/Results.txt"
+    message:"Shortstack analysis of {wildcards.sample} using {input.genome}"
     version:"3.6"
-    params:
-        WORKING_DIR + "shortstack/{wildcards.sample}/"
+    params:"results/shortstack/"
     shell:
         "ShortStack "
-        "--outdir {params} "
-        "-bowtie_cores {THREADS} "
-        "--sort_mem 4Go"		# to sort BAM files
-        "--mismatches 1"		# allows up to 1 mismatch for a valid alignment		
-        "--bowtie_m 50"			# number of possible alignments
-	"--mmap u"			# unique seeded guide for handling multi-mapped reads
-	"--dicermin 20"
-        "--dicermax 24"
-        "--foldsize 300"		# size of genomic RNA segments for folding for MIRNA search
-	"--pad 75"			# clusters of sRNAs merged if distance less/equal to pad value
-        "--mincov 5"			# clusters of small RNAs must have at least this many alignments
+        "--outdir {wildcards.sample} "
+        "--bowtie_cores {THREADS} "
+        "--sort_mem 4G "			# to sort BAM files
+        "--mismatches 1 "			# allows up to 1 mismatch for a valid alignment		
+        "--bowtie_m 50 "			# number of possible alignments
+	"--mmap u "				# unique seeded guide for handling multi-mapped reads
+	"--dicermin 20 "
+        "--dicermax 24 "
+        "--foldsize 300 "		# size of genomic RNA segments for folding for MIRNA search
+	"--pad 75 "			# clusters of sRNAs merged if distance less/equal to pad value
+        "--mincov 5 "			# clusters of small RNAs must have at least this many alignments
         "--readfile {input.reads} "
-        "--genome {input.genome}"
+        "--genome {input.genome};"
+        "mv {wildcards.sample} {params}"
 
+# for s in ShortStack
+#s=$(grep "readfile" ShortStack_*/Log.txt |cut -d : -f 2)
+
+
+#######################################
+## Prediction of repeats in all genomes
+#######################################
+rule predict_Heinz_inverted_repeats:
+    input:
+        heinz = config["refs"]["genomes"]["Heinz"]
+    output:
+        inv = WORKING_DIR + "shortstack/einvert/Heinz_inverted_repeats.inv",
+        seq = WORKING_DIR + "shortstack/einvert/Heinz_inverted_repeats.fa"
+    message:"predicting inverted repeats in genomes: {input}"
+    params: config["emboss"]["einvert"]["params"]
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+
+rule predict_LYC4_inverted_repeats:
+    input:
+        LYC4 = config["refs"]["genomes"]["LYC4"]
+    output:
+        inv = WORKING_DIR + "shortstack/einvert/LYC4_inverted_repeats.inv",
+        seq = WORKING_DIR + "shortstack/einvert/LYC4_inverted_repeats.fa"
+    message:"predicting inverted repeats in genomes: {input}"
+    params: config["emboss"]["einvert"]["params"]
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+
+rule predict_LA2157_inverted_repeats:
+    input:
+        LA2157 = config["refs"]["genomes"]["LA2157"]
+    output:
+        inv = WORKING_DIR + "shortstack/einvert/LA2157_inverted_repeats.inv",
+        seq = WORKING_DIR + "shortstack/einvert/LA2157_inverted_repeats.fa"
+    message:"predicting inverted repeats in genomes: {input}"
+    params: config["emboss"]["einvert"]["params"]
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+
+rule predict_LA0716_inverted_repeats:
+    input:
+        LA0716 = config["refs"]["genomes"]["LA0716"]
+    output:
+        inv = WORKING_DIR + "shortstack/einvert/LA0716_inverted_repeats.inv",
+        seq = WORKING_DIR + "shortstack/einvert/LA0716_inverted_repeats.fa"
+    message:"predicting inverted repeats in genomes: {input}"
+    params: config["emboss"]["einvert"]["params"]
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
      
 #################################################################################
 ## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
@@ -124,9 +176,9 @@ rule map_to_ncRNAs:
         aln = WORKING_DIR + "ncRNA/{sample}_aln.sam",
 	un =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
     message:"mapping {wildcards.sample} reads to non-coding RNA database"
-    log:"results/logs/{sample}_aln2rfam.txt"
+    log:"results/logs/{sample}_aln2ncRNA.txt"
     params:
-        "index/ncRNA"
+        WORKING_DIR + "index/ncRNA"
     shell:
         "bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
 
@@ -196,12 +248,12 @@ rule map_to_plant_virus:
 
 rule make_virus_index:
     input:
-        VIRUS
+        virus = config["refs"]["virus"]
     output:
         ["index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     message:"creating bowtie2 index for {VIRUS}"
     version:"2.1.0"
-    shell:"bowtie2-build -q {VIRUS} index/virus"
+    shell:"bowtie2-build -q {input} index/virus"
 
 #############################
 ## Trim reads for all samples
@@ -255,7 +307,7 @@ rule aln2spikes:
 
 rule make_spike_index:
     input:
-        SPIKES
+        spikes = config["refs"]["spikes"]
     output:
         ["index/spikes" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     message:"creating bowtie2 index for {SPIKES}"

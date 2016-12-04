@@ -1,14 +1,22 @@
 ---
-threads: 5
+threads: 10
 fastqdir: "../../data/01.sequencing/20151007_sRNAs/"
 workdir: "/zfs/scratch/mgalland_temp/srnas/"
-samples: ["LA4024","LA1777","C32"]
+samples: ["LA4024","LA1777","C32","PI127826"]
+
 # genomic and other references
 refs:
-  genome: "../../data/02.refs/ITAG2.3/Solanum_lycopersicum.SL2.40.22.dna.genome.names_modified.fa"
+  genomes: 
+    Heinz:  "../../data/02.refs/ITAG2.3/Solanum_lycopersicum.SL2.40.22.dna.genome.names_modified.fa"
+    LYC4: "../../data/02.refs/LYC4/scaffold_scarpa.fasta"
+    LA2157: "../../data/02.refs/LA2157/scaffold_scarpa.fasta"
+    LA0716: "../../data/02.refs/LA0716/Spenn.fasta"
   transcriptome: "../../data/02.refs/ITAG2.3/Solanum_lycopersicum.SL2.40.22.cdna.all.fa"
   spikes: "../../data/02.refs/spikes/SSPK_v3_removeOldSeq.fa"
   virus: "../../data/02.refs/virus/allplantseqs.fasta" 
+  rfam: "ftp://ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/"
+  tigr:
+    rDNA: "../../02.refs/TIGR/TIGR_Solanaceae_Repeats.v3.2_12_0.rDNA.fasta"
   mirbase: 
     mature: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_mature_mirbase_v21.dna.fasta"
     hairpin: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_stemloop_mirbase_v21.dna.fasta"
@@ -33,3 +41,10 @@ bowtie2:
 trim:
   min_length: "18"
   max_length: "25"
+
+# inverted repeat script from ShortStack
+emboss:
+  einvert:
+    executable: "../../src/EMBOSS-6.6.0/emboss/einvert"
+    params: "-gap 12 -threshold 50 -match 0 -mismatch -4"
+
