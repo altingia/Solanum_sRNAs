@@ -19,23 +19,36 @@ FQ_DIR = config["fastqdir"]
 SPIKES = config["refs"]["spikes"]
 SPIKES_BASENAME = os.path.basename(SPIKES)
 
-# Bowtie2 parameters
-BOWTIE2_PARAMS_SPIKES = " ".join(config["bowtie2"]["spikes_params"].values())
-BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
-
 # Reference fasta files and basename (just the fasta filename)
 VIRUS = config["refs"]["virus"]
 RFAM = config["refs"]["rfam"]
 TRANSCRIPTOME = config["refs"]["transcriptome"]
 
+###########
+## Programs
+###########
+# Bowtie2 parameters
+BOWTIE2_PARAMS_SPIKES = " ".join(config["bowtie2"]["spikes_params"].values())
+BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
+
 # EMBOSS inverted repeats
 EINVERTED = config["emboss"]["einvert"]["executable"]
+
+# Picard tools
+SamToFastq = config["sam2fastq"]
+
+# ShortStack parameters
+SHORTSTACK_PARAMS = " ".join(config["shortstack"].values())
+
+###################
+## Other parameters
+###################
 
 # read length parameters for trimming
 MIN_LEN = config["trim"]["min_length"]
 MAX_LEN = config["trim"]["max_length"]
 
-# Other parameters
+# Threads
 THREADS = 10
 
 ####################
@@ -82,12 +95,23 @@ rule copy_master_files:
 ####################################################
 ## Shortstack analysis based on Solanum lycopersicum
 ####################################################
+rule extract_unaligned_reads:
+    input:
+        "results/shortstack/{sample}/{sample}_unaligned.bam"
+    output:
+        "results/shortstack/{sample}/{sample}_unaligned.fastq"
+    message:"extracting unmapped reads from {input}"
+    shell:
+        "samtools view -f 4 {input} | "
+        "java -jar |java -jar {SamToFastq} I=/dev/stdin F={output} VALIDATION_STRINGENCY=SILENT"
+
 rule shortstack_with_Heinz_genome:
     input:
         reads =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
         genome = config["refs"]["genomes"]["Heinz"]
     output:
-        "results/shortstack/{sample}/Results.txt"
+        "results/shortstack/{sample}/Results.txt",
+        "results/shortstack/{sample}/{sample}_unaligned.bam"
     message:"Shortstack analysis of {wildcards.sample} using {input.genome}"
     version:"3.6"
     params:"results/shortstack/"
@@ -95,18 +119,22 @@ rule shortstack_with_Heinz_genome:
         "ShortStack "
         "--outdir {wildcards.sample} "
         "--bowtie_cores {THREADS} "
-        "--sort_mem 4G "			# to sort BAM files
-        "--mismatches 1 "			# allows up to 1 mismatch for a valid alignment		
-        "--bowtie_m 50 "			# number of possible alignments
-	"--mmap u "				# unique seeded guide for handling multi-mapped reads
-	"--dicermin 20 "
-        "--dicermax 24 "
-        "--foldsize 300 "		# size of genomic RNA segments for folding for MIRNA search
-	"--pad 75 "			# clusters of sRNAs merged if distance less/equal to pad value
-        "--mincov 5 "			# clusters of small RNAs must have at least this many alignments
+        "--sort_mem 4G "		# to sort BAM files
+        "{SHORTSTACK_PARAMS} "
         "--readfile {input.reads} "
         "--genome {input.genome};"
         "mv {wildcards.sample} {params}"
+
+
+			
+#        "--mismatches 1 "			# allows up to 1 mismatch for a valid alignment		
+ #       "--bowtie_m 50 "			# number of possible alignments
+#	"--mmap u "				# unique seeded guide for handling multi-mapped reads
+#	"--dicermin 20 "
+ #       "--dicermax 24 "
+  #      "--foldsize 300 "		# size of genomic RNA segments for folding for MIRNA search
+#	"--pad 75 "			# clusters of sRNAs merged if distance less/equal to pad value
+ #       "--mincov 5 "			# clusters of small RNAs must have at least this many alignments
 
 # for s in ShortStack
 #s=$(grep "readfile" ShortStack_*/Log.txt |cut -d : -f 2)

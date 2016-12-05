@@ -2,7 +2,7 @@
 threads: 10
 fastqdir: "../../data/01.sequencing/20151007_sRNAs/"
 workdir: "/zfs/scratch/mgalland_temp/srnas/"
-samples: ["LA4024","LA1777","C32","PI127826"]
+samples: ["LA4024","LA1777","C32","PI127826","LYC4"]
 
 # genomic and other references
 refs:
@@ -37,6 +37,28 @@ bowtie2:
     read_gap_open_and_extend_penalties:         "--rdg 1,6"
     reference_gap_open_and_extend_penalties:    "--rfg 1,6"
 
+# ShortStack
+shortstack:
+ # mismatches: X 	allows up to X mismatches for a valid alignment
+ # bowtie_m: X		number of possible alignments
+ # mmap u		u = unique seeded guide for handling multi-mapped reads (can be f/u/r/n)
+ # dicermin 20	 	Minimum size of a Dicer-processed small RNA. Must be an integer of at least 15 and <= dicermax. Default: 20
+ # dicermax 24		Maximum size of a Dicer-processed small RNA. Must be an integer of at least 15 and >= dicermin. Default: 24
+ # foldsize 300		Size of genomic RNA segments for folding during MIRNA search	
+ # locifile [string] 	Path to a tab-delimited plain-text file listing intervals to analyze. 
+ # locus [string]	Analyze the specified interval(s). Interval(s) is specified in format Chr:start-stop. exclusive with option --locifile.
+ # nohp  		Disable MIRNA search.
+ # pad 75	 	Initially found clusters of small RNAs will be merged if the distance between them is less than or equal to the value of pad.
+ # mincov 5		Clusters of small RNAs must have at least this many alignments. 
+  mismatches: "--mismatches 1"
+  naln:       "--bowtie_m 50"
+  mmap:       "--mmap u"                # unique seeded guide for handling multi-mapped reads
+  dicermin:   "--dicermin 20"           # minimum size of a Dicer-processed small RNA.
+  dicermax:   "--dicermax 24 "          # maximum size of a Dicer-processed small RNA.
+  foldsize:   "--foldsize 300 "         # size of genomic RNA segments for folding for MIRNA search
+  pad: "--pad 75 "                      # clusters of sRNAs merged if distance less/equal to pad value
+  mincov: "--mincov 5 "                 # clusters of small RNAs must have at least this many alignments
+
 # Trimming parameters
 trim:
   min_length: "18"
@@ -45,6 +67,8 @@ trim:
 # inverted repeat script from ShortStack
 emboss:
   einvert:
-    executable: "../../src/EMBOSS-6.6.0/emboss/einvert"
+    executable: "../../src/EMBOSS-6.6.0/emboss/einverted"
     params: "-gap 12 -threshold 50 -match 0 -mismatch -4"
 
+# Picard tools
+sam2fastq: "/zfs/datastore0/software/src/picard-tools/SamToFastq.jar"
