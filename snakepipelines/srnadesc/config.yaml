@@ -1,8 +1,8 @@
 ---
 threads: 10
 fastqdir: "../../data/01.sequencing/20151007_sRNAs/"
-workdir: "/zfs/scratch/mgalland_temp/srnas/"
-samples: ["LA4024","LA1777","C32","PI127826","LYC4"]
+workdir: "analysis/"
+samples: ["C32","LA4024","PI127826","LYC4","LA1777"]
 
 # genomic and other references
 refs:
@@ -11,12 +11,13 @@ refs:
     LYC4: "../../data/02.refs/LYC4/scaffold_scarpa.fasta"
     LA2157: "../../data/02.refs/LA2157/scaffold_scarpa.fasta"
     LA0716: "../../data/02.refs/LA0716/Spenn.fasta"
+    pangenome: "../../data/02.refs/pangenome/pangenome.fasta"
   transcriptome: "../../data/02.refs/ITAG2.3/Solanum_lycopersicum.SL2.40.22.cdna.all.fa"
   spikes: "../../data/02.refs/spikes/SSPK_v3_removeOldSeq.fa"
   virus: "../../data/02.refs/virus/allplantseqs.fasta" 
   rfam: "ftp://ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/"
   tigr:
-    rDNA: "../../02.refs/TIGR/TIGR_Solanaceae_Repeats.v3.2_12_0.rDNA.fasta"
+    rDNA: "../../data/02.refs/TIGR/TIGR_Solanaceae_Repeats.v3.2_12_0.rDNA.fasta"
   mirbase: 
     mature: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_mature_mirbase_v21.dna.fasta"
     hairpin: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_stemloop_mirbase_v21.dna.fasta"
@@ -54,10 +55,13 @@ shortstack:
   naln:       "--bowtie_m 50"
   mmap:       "--mmap u"                # unique seeded guide for handling multi-mapped reads
   dicermin:   "--dicermin 20"           # minimum size of a Dicer-processed small RNA.
-  dicermax:   "--dicermax 24 "          # maximum size of a Dicer-processed small RNA.
-  foldsize:   "--foldsize 300 "         # size of genomic RNA segments for folding for MIRNA search
-  pad: "--pad 75 "                      # clusters of sRNAs merged if distance less/equal to pad value
-  mincov: "--mincov 5 "                 # clusters of small RNAs must have at least this many alignments
+  dicermax:   "--dicermax 24"           # maximum size of a Dicer-processed small RNA.
+  foldsize: "--foldsize 300"            # size of genomic RNA segments for folding for MIRNA search
+  pad:      "--pad 100"                 # clusters of sRNAs merged if distance less/equal to pad value
+  mincov: "--mincov 20"                 # clusters of small RNAs must have at least this many alignments default: 20
+  #maxmiRUnpaired: "-maxmiRUnpaired 5"   # max number of unpaired miRNA nts in a miRNA/miRNA* duplex		
+  #miRType:    "plant"                   # plant or animal. plant sets -maxmiRHPPairs to 150 -maxmiRUnpaired 5 -maxLoopLength 100000
+  
 
 # Trimming parameters
 trim:
@@ -65,10 +69,7 @@ trim:
   max_length: "25"
 
 # inverted repeat script from ShortStack
-emboss:
-  einvert:
-    executable: "../../src/EMBOSS-6.6.0/emboss/einverted"
-    params: "-gap 12 -threshold 50 -match 0 -mismatch -4"
+einverted_params: "-maxrepeat 10000 -gap 12 -threshold 50 -match 3 -mismatch -4"
 
 # Picard tools
 sam2fastq: "/zfs/datastore0/software/src/picard-tools/SamToFastq.jar"
