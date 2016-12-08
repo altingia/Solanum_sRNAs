@@ -31,14 +31,14 @@ TRANSCRIPTOME = config["refs"]["transcriptome"]
 BOWTIE2_PARAMS_SPIKES = " ".join(config["bowtie2"]["spikes_params"].values())
 BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
 
-# EMBOSS inverted repeats
-EINVERTED = config["emboss"]["einvert"]["executable"]
-
 # Picard tools
 SamToFastq = config["sam2fastq"]
 
 # ShortStack parameters
 SHORTSTACK_PARAMS = " ".join(config["shortstack"].values())
+
+# EMBOSS einverted params
+EINVERTED_PARAMS = config["einverted_params"]
 
 ###################
 ## Other parameters
@@ -55,22 +55,33 @@ THREADS = 10
 ## Desired outputs
 ####################
 
+# Spikes stats
+SPIKES_COUNTS = expand("results/spikes/{sample}.txt",sample=config["samples"])
+
+# Lengths
+LENGTHS = expand("results/distri/{sample}.{trim}.txt",sample=config["samples"],trim=["original","trimmed"])
+
 # Counts
-SEQCOUNTS = expand("results/counts/{sample}.{step}.txt",sample=config["samples"],step=["01_original","02_spikes","03_trimmed","04_virus","05_ncRNA"])
+#SEQCOUNTS = expand("results/counts/{sample}.{step}.txt",sample=config["samples"],step=["01_original","02_spikes","03_trimmed","04_virus","05_ncRNA"])
+SEQCOUNTS = expand("results/{sample}.counts.txt",sample=config["samples"])
+
+# Inverted repeats
+INVERT_REPEATS = expand(WORKING_DIR + "shortstack/einvert/{genome}_inverted_repeats.inv",genome=["LA0716","Heinz","LA2157","LYC4"])
 
 # ShortStack
 SHORTSTACK = expand("results/shortstack/{sample}/Results.txt",sample=config["samples"])
+
 # Snakefile and config file used
 MASTER_FILES = ["results/Snakefile","results/config.yaml"]
 
-
-
 rule all: 
 	input: 		
+		SPIKES,	
+		SPIKES_COUNTS,
+		LENGTHS,	
 		SEQCOUNTS,
 		SHORTSTACK,
-		MASTER_FILES,
-		expand(WORKING_DIR + "shortstack/einvert/{genome}_inverted_repeats.inv",genome=["LA0716","Heinz","LA2157","LYC4"])
+		MASTER_FILES
 	message:"All done!"
      
 #####################
@@ -86,58 +97,61 @@ rule copy_master_files:
     shell:
         "cp {input} results/"
 
+#####################
+## Concatenate counts
+#####################
+rule concatenate_counts:
+    input:
+        "results/counts/{sample}.01_original.txt",
+        "results/counts/{sample}.02_spikes.txt",
+        "results/counts/{sample}.03_trimmed.txt",
+        "results/counts/{sample}.04_virus.txt",
+        "results/counts/{sample}.05_ncRNA.txt",
+        "results/counts/{sample}.06_ShortStack_Heinz.txt"
+    output:
+        "results/{sample}.counts.txt"
+    message:"concatenating counts at all steps for {wildcards.sample}"
+    shell:"cat {input} >> {output}"
 
 #########################################################################
 ## Intersection with known miRNA (from miRNA gff3 genome annotation file)
 #########################################################################
 
-
+        
 ####################################################
 ## Shortstack analysis based on Solanum lycopersicum
 ####################################################
-rule extract_unaligned_reads:
+rule count_unmapped_after_ShortStack:
     input:
-        "results/shortstack/{sample}/{sample}_unaligned.bam"
+        bam = "results/shortstack/{sample}/{sample}_unaligned.bam"
     output:
-        "results/shortstack/{sample}/{sample}_unaligned.fastq"
-    message:"extracting unmapped reads from {input}"
-    shell:
-        "samtools view -f 4 {input} | "
-        "java -jar |java -jar {SamToFastq} I=/dev/stdin F={output} VALIDATION_STRINGENCY=SILENT"
+        "results/counts/{sample}.06_ShortStack_Heinz.txt"
+    message:"counting {wildcards.sample} sequences after ShortStack alignment"
+    shell:"""
+         count=$(($(samtools view -f 4 -c {input.bam})))
+         echo "{wildcards.sample}\t06_ShortStack_Heinz\t$count" >> {output} 
+         """
 
-rule shortstack_with_Heinz_genome:
+rule shortstack:
     input:
         reads =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
-        genome = config["refs"]["genomes"]["Heinz"]
+        genome = config["refs"]["genomes"]["pangenome"]
     output:
         "results/shortstack/{sample}/Results.txt",
         "results/shortstack/{sample}/{sample}_unaligned.bam"
-    message:"Shortstack analysis of {wildcards.sample} using {input.genome}"
+    message:"Shortstack analysis of {wildcards.sample} using pangenome"
     version:"3.6"
-    params:"results/shortstack/"
+    params:"results/shortstack/{sample}/"
     shell:
         "ShortStack "
         "--outdir {wildcards.sample} "
         "--bowtie_cores {THREADS} "
-        "--sort_mem 4G "		# to sort BAM files
+        "--sort_mem 4G "
+        "--nostitch "		
         "{SHORTSTACK_PARAMS} "
         "--readfile {input.reads} "
         "--genome {input.genome};"
-        "mv {wildcards.sample} {params}"
-
-
-			
-#        "--mismatches 1 "			# allows up to 1 mismatch for a valid alignment		
- #       "--bowtie_m 50 "			# number of possible alignments
-#	"--mmap u "				# unique seeded guide for handling multi-mapped reads
-#	"--dicermin 20 "
- #       "--dicermax 24 "
-  #      "--foldsize 300 "		# size of genomic RNA segments for folding for MIRNA search
-#	"--pad 75 "			# clusters of sRNAs merged if distance less/equal to pad value
- #       "--mincov 5 "			# clusters of small RNAs must have at least this many alignments
-
-# for s in ShortStack
-#s=$(grep "readfile" ShortStack_*/Log.txt |cut -d : -f 2)
+        "cp -r {wildcards.sample}/* {params}"
 
 
 #######################################
@@ -150,8 +164,8 @@ rule predict_Heinz_inverted_repeats:
         inv = WORKING_DIR + "shortstack/einvert/Heinz_inverted_repeats.inv",
         seq = WORKING_DIR + "shortstack/einvert/Heinz_inverted_repeats.fa"
     message:"predicting inverted repeats in genomes: {input}"
-    params: config["emboss"]["einvert"]["params"]
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+    version: "EMBOSS:6.6.0.0"
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
 
 rule predict_LYC4_inverted_repeats:
     input:
@@ -160,28 +174,28 @@ rule predict_LYC4_inverted_repeats:
         inv = WORKING_DIR + "shortstack/einvert/LYC4_inverted_repeats.inv",
         seq = WORKING_DIR + "shortstack/einvert/LYC4_inverted_repeats.fa"
     message:"predicting inverted repeats in genomes: {input}"
-    params: config["emboss"]["einvert"]["params"]
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+    version: "EMBOSS:6.6.0.0"
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
 
 rule predict_LA2157_inverted_repeats:
     input:
         LA2157 = config["refs"]["genomes"]["LA2157"]
     output:
-        inv = WORKING_DIR + "shortstack/einvert/LA2157_inverted_repeats.inv",
-        seq = WORKING_DIR + "shortstack/einvert/LA2157_inverted_repeats.fa"
+        inv = WORKING_DIR + "einvert/LA2157_inverted_repeats.inv",
+        seq = WORKING_DIR + "einvert/LA2157_inverted_repeats.fa"
     message:"predicting inverted repeats in genomes: {input}"
-    params: config["emboss"]["einvert"]["params"]
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+    version: "EMBOSS:6.6.0.0"
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
 
 rule predict_LA0716_inverted_repeats:
     input:
         LA0716 = config["refs"]["genomes"]["LA0716"]
     output:
-        inv = WORKING_DIR + "shortstack/einvert/LA0716_inverted_repeats.inv",
-        seq = WORKING_DIR + "shortstack/einvert/LA0716_inverted_repeats.fa"
+        inv = WORKING_DIR + "einvert/LA0716_inverted_repeats.inv",
+        seq = WORKING_DIR + "einvert/LA0716_inverted_repeats.fa"
     message:"predicting inverted repeats in genomes: {input}"
-    params: config["emboss"]["einvert"]["params"]
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {params}"
+    version:"EMBOSS:6.6.0.0"
+    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
      
 #################################################################################
 ## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
@@ -283,9 +297,18 @@ rule make_virus_index:
     version:"2.1.0"
     shell:"bowtie2-build -q {input} index/virus"
 
-#############################
-## Trim reads for all samples
-#############################
+##############################################
+## Trim reads for all samples + counts/lengths
+##############################################
+rule trimmed_seq_lengths:
+    input:
+        fq= FQ_DIR + "{sample}.fastq"
+    output:
+        "results/distri/{sample}.trimmed.txt"
+    message:"computing trimmed read length distribution for {wildcards.sample}"
+    shell:
+        "python ../../scripts/read_length_distribution.py -f {input} -o {output} -n {wildcards.sample}_trimmed"
+
 rule count_trimmed:
     input:
         WORKING_DIR + "trim/{sample}.trimmed.fastq"
@@ -309,7 +332,7 @@ rule trim_reads:
 ##################
 ## Spikes analysis
 ##################
-rule count_spikes:
+rule count_seqs_after_spikes:
     input:
         un =  WORKING_DIR + "spikes/{sample}_unaligned.fastq"
     output:
@@ -319,12 +342,41 @@ rule count_spikes:
         "python ../../scripts/count_seqs_in_fastq.py "
         "-f {input} -o {output} -f1 {wildcards.sample} -f2 02.spikes"
 
+rule counts_from_spikes:
+    input:
+        WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam",
+        WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam.bai"
+    output:
+        "results/spikes/{sample}.txt"
+    message:"computing counts on spike-ins for {wildcards.sample}"
+    shell:"samtools idxstats {input} > {output}"
+
+rule index_spikebam:
+    input:
+        WORKING_DIR + "spikes/{sample}_spike_aln.bam"
+    output:
+        bam  = WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam", 
+        bai = WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam.bai"
+    message:"indexing {input}"
+    params: WORKING_DIR + "spikes/{sample}_spike_aln.sorted"
+    shell:
+        "samtools sort {input} {params};"
+        "samtools index {output.bam}"
+
+rule convert2bam:
+    input:
+        WORKING_DIR + "spikes/{sample}_spike_aln.sam"
+    output:
+        temp(WORKING_DIR + "spikes/{sample}_spike_aln.bam")
+    message:"converting {input} to BAM"
+    shell:"samtools view -b {input} > {output}"
+
 rule aln2spikes:
     input:
         fq= FQ_DIR + "{sample}.fastq",
         index = ["index/spikes" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     output:
-        aln = WORKING_DIR + "spikes/{sample}_spike_aln.sam",
+        aln = temp(WORKING_DIR + "spikes/{sample}_spike_aln.sam"),
         un =  WORKING_DIR + "spikes/{sample}_unaligned.fastq"
     message: "Aligning {wildcards.sample} reads to spike sequences."
     log:"results/logs/{sample}_spikes.txt"
@@ -344,7 +396,19 @@ rule make_spike_index:
         "bowtie2-build -q {SPIKES} index/spikes"
 
 #####################################################
-## Count sequence occurences in the different samples
+## Output the read lengths in the different samples
+##################################################### 
+rule original_seq_lengths:
+    input:
+        fq= FQ_DIR + "{sample}.fastq"
+    output:
+        "results/distri/{sample}.original.txt"
+    message:"computing original read length distribution for {wildcards.sample}"
+    shell:
+        "python ../../scripts/read_length_distribution.py -f {input} -o {output} -n {wildcards.sample}_original"
+
+#####################################################
+## Count number of sequences in the different samples
 ##################################################### 
 rule count_original_seqs:
     input:
