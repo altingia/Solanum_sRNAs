@@ -1,6 +1,6 @@
 # !/usr/bin/env python
 """
-To count the number of reads at a certain stage in the pipeline, I create a Python function that counts the number of sequences.
+To count the number of reads at a certain stage in the pipeline, I created a Python script that counts the number of sequences.
 It returns a simple line separated by tabulation:
 "sample name"	\t	"Step name e.g. 'after trimming'"	\t "number of counts"
 "LA1777"	\t	"After trimming"			\t "127826"			
