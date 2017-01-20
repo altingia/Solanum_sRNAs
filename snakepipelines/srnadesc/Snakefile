@@ -55,15 +55,12 @@ THREADS = 10
 ## Desired outputs
 ####################
 
-# Spikes stats
-SPIKES_COUNTS = expand("results/spikes/{sample}.txt",sample=config["samples"])
-
 # Lengths
 LENGTHS = expand("results/distri/{sample}.{trim}.txt",sample=config["samples"],trim=["original","trimmed"])
 
 # Counts
-#SEQCOUNTS = expand("results/counts/{sample}.{step}.txt",sample=config["samples"],step=["01_original","02_spikes","03_trimmed","04_virus","05_ncRNA"])
-SEQCOUNTS = expand("results/{sample}.counts.txt",sample=config["samples"])
+SPIKES_COUNTS = expand("results/spikes/{sample}.txt",sample=config["samples"])
+SEQCOUNTS = expand("results/counts/{sample}.counts.txt",sample=config["samples"])
 
 # Inverted repeats
 INVERT_REPEATS = expand(WORKING_DIR + "shortstack/einvert/{genome}_inverted_repeats.inv",genome=["LA0716","Heinz","LA2157","LYC4"])
@@ -109,7 +106,7 @@ rule concatenate_counts:
         "results/counts/{sample}.05_ncRNA.txt",
         "results/counts/{sample}.06_ShortStack_Heinz.txt"
     output:
-        "results/{sample}.counts.txt"
+        "results/counts/{sample}.counts.txt"
     message:"concatenating counts at all steps for {wildcards.sample}"
     shell:"cat {input} >> {output}"
 
@@ -147,56 +144,13 @@ rule shortstack:
         "--outdir {wildcards.sample} "
         "--bowtie_cores {THREADS} "
         "--sort_mem 4G "
-        "--nostitch "		
+        "--nostitch "	
         "{SHORTSTACK_PARAMS} "
         "--readfile {input.reads} "
         "--genome {input.genome};"
-        "cp -r {wildcards.sample}/* {params}"
+        "cp -r {wildcards.sample}/* {params};"
+        "rm -r {wildcards.sample}"
 
-
-#######################################
-## Prediction of repeats in all genomes
-#######################################
-rule predict_Heinz_inverted_repeats:
-    input:
-        heinz = config["refs"]["genomes"]["Heinz"]
-    output:
-        inv = WORKING_DIR + "shortstack/einvert/Heinz_inverted_repeats.inv",
-        seq = WORKING_DIR + "shortstack/einvert/Heinz_inverted_repeats.fa"
-    message:"predicting inverted repeats in genomes: {input}"
-    version: "EMBOSS:6.6.0.0"
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
-
-rule predict_LYC4_inverted_repeats:
-    input:
-        LYC4 = config["refs"]["genomes"]["LYC4"]
-    output:
-        inv = WORKING_DIR + "shortstack/einvert/LYC4_inverted_repeats.inv",
-        seq = WORKING_DIR + "shortstack/einvert/LYC4_inverted_repeats.fa"
-    message:"predicting inverted repeats in genomes: {input}"
-    version: "EMBOSS:6.6.0.0"
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
-
-rule predict_LA2157_inverted_repeats:
-    input:
-        LA2157 = config["refs"]["genomes"]["LA2157"]
-    output:
-        inv = WORKING_DIR + "einvert/LA2157_inverted_repeats.inv",
-        seq = WORKING_DIR + "einvert/LA2157_inverted_repeats.fa"
-    message:"predicting inverted repeats in genomes: {input}"
-    version: "EMBOSS:6.6.0.0"
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
-
-rule predict_LA0716_inverted_repeats:
-    input:
-        LA0716 = config["refs"]["genomes"]["LA0716"]
-    output:
-        inv = WORKING_DIR + "einvert/LA0716_inverted_repeats.inv",
-        seq = WORKING_DIR + "einvert/LA0716_inverted_repeats.fa"
-    message:"predicting inverted repeats in genomes: {input}"
-    version:"EMBOSS:6.6.0.0"
-    shell:"{EINVERTED} -sequence {input} -outfile {output.inv} -outseq {output.seq} {EINVERTED_PARAMS}"
-     
 #################################################################################
 ## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
 #################################################################################
@@ -244,23 +198,25 @@ rule merge_RFAM_TIGR_repeats:
           
 rule parse_RFAM_db:
     input:
-        WORKING_DIR + "ncRNA/RFAM.gz"
+        WORKING_DIR + "ncRNA/RFAM.fa"
     output:
         WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
     message:"keeping records for Solanum lycopersicum species"
     shell:
-        "zcat {input} |grep -A1 'Solanum lycopersicum' | " # this keeps records for tomato
+        "cat {input} |grep -A1 'Solanum lycopersicum' | " # this keeps records for tomato
         "sed -e '/microRNA/,+1d' > {output}" 		   # this removes the line and the following line when it matches microRNA
 
 rule get_RFAM_database:
     output:
-        rfam = WORKING_DIR + "ncRNA/RFAM.gz"
+        rfam = WORKING_DIR + "ncRNA/RFAM.fa"
     message:"downloading last release of RFAM database"
     params:
-        rfam = WORKING_DIR + "ncRNA/RFAM.gz",
         rfamlink = config["refs"]["rfam"],
     shell:
-        "wget -r --quiet --output-document {params.rfam} {params.rfamlink};" 
+        "wget -r --quiet {params};"
+        "gunzip --force ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/RF*.gz;"
+        "cat  ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/*.fa >> {output}"
+        
 
 ###########################################
 ## removal of plant virus from all samples
@@ -302,7 +258,7 @@ rule make_virus_index:
 ##############################################
 rule trimmed_seq_lengths:
     input:
-        fq= FQ_DIR + "{sample}.fastq"
+        WORKING_DIR + "trim/{sample}.trimmed.fastq"
     output:
         "results/distri/{sample}.trimmed.txt"
     message:"computing trimmed read length distribution for {wildcards.sample}"
