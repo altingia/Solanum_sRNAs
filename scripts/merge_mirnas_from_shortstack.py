@@ -86,11 +86,11 @@ miRNAs = list(set(df["MajorRNA"].tolist()))
 print("We found {0} non-redundant miRNAs".format(len(miRNAs)))
 
 # write to file
-with open("miRNAs.txt","w") as fileout1:
+with open(args.outtextfile,"w") as fileout1:
 	fileout1.write("id"+"\t"+"miRNA_seq" + "\n")
 	for i in range(0,len(miRNAs),1):
 		fileout1.write(str(i+1)+"\t"+miRNAs[i]+"\n")
-with open("miRNAs.fasta","w") as fileout2:
+with open(args.outfastafile,"w") as fileout2:
 	for i in range(0,len(miRNAs),1):
 		fileout2.write(">miRNA"+str(i+1)+"\n"+miRNAs[i]+"\n")
 
