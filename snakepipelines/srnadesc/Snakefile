@@ -12,12 +12,11 @@ wildcard_constraints:
   dataset="[Aa-Zz0-9]+"
 
 # directories 
-WORKING_DIR = config["workdir"] # can be cleaned up at the end
+FQ_DIR = config["fastqdir"]
+WORKING_DIR = config["workdir"] 
 RES_DIR = config["resultdir"]
 
-# Input files
-FQ_DIR = config["fastqdir"]
-RES_DIR = config["resultdir"]
+# internal standards 
 SPIKES = config["refs"]["spikes"]
 SPIKES_BASENAME = os.path.basename(SPIKES)
 
@@ -41,9 +40,6 @@ SamToFastq = config["sam2fastq"]
 # ShortStack parameters
 SHORTSTACK_PARAMS = " ".join(config["shortstack"].values())
 
-# Blastn
-BLASTN_PARAMS = " ".join(config["blastn"].values())
-
 ###################
 ## Other parameters
 ###################
@@ -53,7 +49,7 @@ MIN_LEN = config["trim"]["min_length"]
 MAX_LEN = config["trim"]["max_length"]
 
 # Threads
-THREADS = 10
+THREADS = config["threads"]
 
 ####################
 ## Desired outputs
