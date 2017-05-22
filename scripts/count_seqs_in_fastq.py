@@ -1,9 +1,9 @@
 # !/usr/bin/env python
 """
-To count the number of reads at a certain stage in the pipeline, I created a Python script that counts the number of sequences.
+To count the number of reads at a certain stage in the pipeline, I created a Python script that counts the number of sequences as well as the number of non-redundant sequences
 It returns a simple line separated by tabulation:
-"sample name"	\t	"Step name e.g. 'after trimming'"	\t "number of counts"
-"LA1777"	\t	"After trimming"			\t "127826"			
+"sample name"	\t	"Step name 	\t	"number of counts"	\t	"number of non-redundant sequences"
+"LA1777"	\t	"After trimming"\t	"127826"		\t	"50"	
 
 This Python function reads a fastq file and returns a text file containing a single line containing:
 * --field1		a name that can be specified by the user (default = fastq file name)
@@ -28,8 +28,9 @@ args = parser.parse_args()
 def count_fastq_seqs(infile,outfile,sample,stepname):
     with open(args.fastqfile,"r") as filin:
         seqs = [str(rec.seq) for rec in SeqIO.parse(filin,"fastq")]
-        nseqs = len(seqs)
+        nseqs = len(seqs)	# total number of sequences
+        nrseqs = len(list(set(seqs)))
     with open(args.outfile,"w") as fileout:
-        fileout.write(str(sample) + "\t" + str(stepname) + "\t" + str(nseqs) + "\n")   
+        fileout.write(str(sample) + "\t" + str(stepname) + "\t" + str(nseqs) + "\t" + str(nrseqs) + "\n")   
 
 count_fastq_seqs(args.fastqfile,args.outfile,args.field1,args.field2)

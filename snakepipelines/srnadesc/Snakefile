@@ -180,7 +180,8 @@ rule count_unmapped_after_ShortStack:
         RES_DIR + "counts/{sample}.06_ShortStack.txt"
     message:"counting {wildcards.sample} sequences after ShortStack alignment"
     shell:"""
-         count=$(($(samtools view -f 4 -c {input.bam})))
+         samtools index {input};
+t         count=$(($(samtools view -f 4 -c {input.bam})))
          nrcount=$(($(samtools view -f 4 {input.bam} |awk '{{print $10}}' |sort|uniq|wc -l)))
          echo "{wildcards.sample}\t06_ShortStack\t$count\t$nrcount" >> {output} 
          """
@@ -206,7 +207,7 @@ rule shortstack:
         "--readfile {input.reads} "
         "--genome {input.genome};"
         "cp -r {wildcards.sample}/* {params};"
-        "rm -r {wildcards.sample}"
+        "rm -r {wildcards.sample};"
 
 #################################################################################
 ## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
@@ -293,7 +294,7 @@ rule count_virus:
 
 rule map_to_plant_virus:
     input: 
-        index = ["index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]],
+        index = [WORKING_DIR + "index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]],
         reads =  WORKING_DIR + "trim/{sample}.trimmed.fastq" 
     output:
         aln = WORKING_DIR + "virus/{sample}_aln.sam",
@@ -301,7 +302,8 @@ rule map_to_plant_virus:
     log: RES_DIR + "logs/{sample}_aln2virus.txt"
     message:"mapping {wildcards.sample} reads to plant virus sequences" 
     version: "2.1.0"
-    params:"index/virus"
+    params:
+        WORKING_DIR + "index/virus"
     shell:"bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
 
 rule make_virus_index:
