@@ -181,7 +181,7 @@ rule count_unmapped_after_ShortStack:
     message:"counting {wildcards.sample} sequences after ShortStack alignment"
     shell:"""
          samtools index {input};
-t         count=$(($(samtools view -f 4 -c {input.bam})))
+         count=$(($(samtools view -f 4 -c {input.bam})))
          nrcount=$(($(samtools view -f 4 {input.bam} |awk '{{print $10}}' |sort|uniq|wc -l)))
          echo "{wildcards.sample}\t06_ShortStack\t$count\t$nrcount" >> {output} 
          """
