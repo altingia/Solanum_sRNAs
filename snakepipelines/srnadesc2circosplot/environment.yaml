@@ -1,0 +1,16 @@
+---
+channels:
+  - conda-forge
+  - bioconda
+  - r
+  - defaults
+dependencies:
+  - python=3.5.1
+  - samtools=1.1
+  - biopython=1.68
+  - snakemake=3.8.2
+  - pyyaml=3.11
+  - bedops=2.4.26
+  - circos=0.69.4
+
+
