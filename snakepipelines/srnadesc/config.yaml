@@ -3,7 +3,7 @@ threads: 5
 fastqdir: "/home/mgalland/data/01_sequencing_runs/20151007_small_RNAs_20_accessions/"
 workdir: "scratch/"
 resultdir: "results/"
-samples: ["C32","LA0407","LA0716","LA1278","LA1364","LA1401","LA1578","LA1777","LA1840","LA1954","LA2133","LA2172","LA2386","LA2695","LA4024","LYC140","LYC38","LA1718","LYC4","PI127826","all"]
+samples: ["C32","LA0407","LA0716","LA1278","LA1364","LA1401","LA1578","LA1777","LA1840","LA1954","LA2133","LA2172","LA2386","LA2695","LA4024","LYC140","LYC38","LA1718","LYC4","PI127826"]
 
 # genomic and other references
 refs:
