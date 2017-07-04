@@ -1,0 +1,21 @@
+---
+srnadesc: "/Users/mgalland/SURFdrive/trichome_team/06.results_from_xp/sRNA-Seq/20170418_srnadesc_ITAG3.0/"
+workdir: "scratch/"
+resultdir: "results/"
+
+# genomic and other references
+refs:
+  annotations:
+    genome: "../../data/02.refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa" 
+    chromsizes: "../../data/02.refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt"
+    bed.genome: "../../data/02.refs/Solanum_lycopersicum/ITAG3.0/genome.bed"
+    bed.repeats: "../../data/02.refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_repeats_light.bed"
+    bed.genes: "../../data/02.refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.bed"
+
+
+# circos
+circos:
+  karyotype: "../../data/02.refs/Solanum_lycopersicum/ITAG3.0/karyotype.txt"
+
+# chop
+chop: 10 000 000 # 10Mb

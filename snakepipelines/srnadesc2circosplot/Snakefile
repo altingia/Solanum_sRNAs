@@ -1,0 +1,116 @@
+"""
+This Snakemake pipeline takes several result files obtained from the "srnadesc" Snakemake pipeline. 
+Make sure that the genome reference used in "srnadesc" is the same for the "srnadesc2circosplot" pipeline.
+Please see README.md for more details
+"""
+
+# COnfiguraation
+configfile: "config.yaml"
+
+RES_DIR = config["resultdir"]
+WORK_DIR = config["workdir"]
+
+# Chop genome
+CHOP = config["chop"]
+
+# take the sample names from the srnadesc result directory
+SAMPLES, = glob_wildcards(config["srnadesc"] + "shortstack/{sample}/ShortStack_D.gff3") 
+
+#################
+# Desired outputs
+#################
+DENSITIES = expand(RES_DIR + "{sample}.ShortStack_D.bed",sample=SAMPLES_)
+CIRCOS = expand(RES_DIR + "circos.{ext}",ext=[".svg",".png"])
+
+rule all:
+    input:
+        DENSITIES
+    message:"all done"
+
+
+################
+# Rules
+################
+rule circos_plot:
+    input: 
+        "circos.conf"
+    output:
+    message:"generating circos plots"
+    params:
+        resdir = RES_DIR
+    shell:
+        "circos --conf {input} --outputdir {params.resdir}"
+
+#################################################
+# Density of experimentally defined sRNA clusters
+#################################################
+rule generate_sRNA_cluster_density:
+    input:
+        dicer = WORK_DIR + "shortstack/{sample}.ShortStack_D.bed",
+        reference = WORK_DIR + "genome.chopped.bed"
+    output:
+        RES_DIR + "{sample}.ShortStack_D.bed"
+    message:"generating {wildcards.sample} shorstack_D cluster density" 
+    shell:
+        """
+        bedmap --echo --count --delim '\t' {input.reference} {input.dicer} > {output}
+        """
+
+rule shortstack_D_gff2bed:
+    input:
+        gff = config["srnadesc"] + "shortstack/{sample}/ShortStack_D.gff3"
+    output:
+        bed = WORK_DIR + "shortstack/{sample}.ShortStack_D.bed"
+    message:"converting {wildcards.sample} ShortStack gff file for loci with a positive DicerCall"
+    shell:
+        "convert2bed -i gff < {input.gff} > {output.bed}"
+
+rule shortstack_N_gff2bed:
+    input:
+        gff = config["srnadesc"] + "shortstack/{sample}/ShortStack_N.gff3"
+    output:
+        bed = WORK_DIR + "shortstack/{sample}.ShortStack_N.bed"
+    message:"converting {wildcards.sample} ShortStack gff file for loci NOT with a positive DicerCall"
+    shell:
+        "convert2bed -i gff < {input.gff} > {output.bed}"
+
+###########################################################
+# Computes reference annotations densities (genes, repeats)
+###########################################################
+rule generate_gene_density:
+    input:
+        geneBed = config["refs"]["annotations"]["bed.genes"],
+        genomeChopped = WORK_DIR + "genome.chopped.bed"
+    output:
+        gene = WORK_DIR + "gene.counts.bed"
+    message:"Computing gene density data file for circos"
+    shell:
+        """
+        bedmap --echo --count --delim '\t' {input.genomeChopped} {input.geneBed} > {output}
+        """
+
+rule generate_repeat_density:
+    input:
+        repeatBed = config["refs"]["annotations"]["bed.repeats"]
+    output:
+        repeats = WORK_DIR + "repeats.counts.bed"
+    message:"converting repeat density file for circos"
+    shell:
+        """
+        bedmap --echo --count --delim '\t' {input.genomeChopped} {input.geneBed} > {output}
+        """
+
+#######################################
+# Divide genome into evenly spaced bits
+#######################################
+rule chop_reference:
+    input:
+        genome = config["refs"]["annotations"]["bed.genome"]
+    output:
+        WORK_DIR + "genome.chopped.bed"
+    message:"chopping genome in sections of {CHOP} bases"
+    shell:
+        "bedops --chop {CHOP} {input.genome} > {output}"
+
+
+

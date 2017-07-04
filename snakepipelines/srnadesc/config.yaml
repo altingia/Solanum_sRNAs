@@ -1,0 +1,75 @@
+---
+threads: 20
+fastqdir: "/home/mgalland/data/01_sequencing_runs/20151007_small_RNAs_20_accessions/"
+workdir: "scratch/"
+resultdir: "results/"
+samples: ["C32","LA0407","LA0716","LA1278","LA1364","LA1401","LA1578","LA1777","LA1840","LA1954","LA2133","LA2172","LA2386","LA2695","LA4024","LYC140","LYC38","LA1718","LYC4","PI127826"]
+
+# genomic and other references
+refs:
+  genome: "../../data/02.refs/LA0716/Spenn.fasta" 
+  chromsizes: "../../data/02.refs/LA0716/chromSizes.txt"
+  transcriptome: "../../data/02.refs/LA0716/Spenn-v2-cds-annot.fa"
+  spikes: "../../data/02.refs/spikes/SSPK_v3_removeOldSeq.fa"
+  virus: "../../data/02.refs/virus/allplantseqs.fasta" 
+  rfam: "ftp://ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/"
+  tigr:
+    rDNA: "../../data/02.refs/TIGR/TIGR_Solanaceae_Repeats.v3.2_12_0.rDNA.fasta"
+  mirbase: 
+    mature: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_mature_mirbase_v21.dna.fasta"
+    hairpin: "../../data/02.refs/miRBase21/Solanum_lycopersicum/sly_stemloop_mirbase_v21.dna.fasta"
+
+# Short read aligners
+bowtie2:
+  spikes_params:
+    seedlength:                                 "-L 6"
+    interval_between_seeds:                     "-i S,0,0.5"
+    do_not_aln_to_reverse_strand:               "--norc"
+    read_gap_open_and_extend_penalties:         "--rdg 1,6"
+    reference_gap_open_and_extend_penalties:    "--rfg 1,6"
+    min_score_to_be_valid:                      "--score-min L,-1,-0.6"
+  general_params:
+    seedlength:                                 "-L 6"
+    interval_between_seeds:                     "-i S,0,0.5"
+    do_not_aln_to_reverse_strand:               "--norc"
+    read_gap_open_and_extend_penalties:         "--rdg 1,6"
+    reference_gap_open_and_extend_penalties:    "--rfg 1,6"
+
+# ShortStack
+shortstack:
+ # mismatches: X 	allows up to X mismatches for a valid alignment
+ # bowtie_m: X		number of possible alignments
+ # mmap u		u = unique seeded guide for handling multi-mapped reads (can be f/u/r/n)
+ # dicermin 20	 	Minimum size of a Dicer-processed small RNA. Must be an integer of at least 15 and <= dicermax. Default: 20
+ # dicermax 24		Maximum size of a Dicer-processed small RNA. Must be an integer of at least 15 and >= dicermin. Default: 24
+ # foldsize 300		Size of genomic RNA segments for folding during MIRNA search	
+ # locifile [string] 	Path to a tab-delimited plain-text file listing intervals to analyze. 
+ # locus [string]	Analyze the specified interval(s). Interval(s) is specified in format Chr:start-stop. exclusive with option --locifile.
+ # nohp  		Disable MIRNA search.
+ # pad 75	 	Initially found clusters of small RNAs will be merged if the distance between them is less than or equal to the value of pad.
+ # mincov 5		Clusters of small RNAs must have at least this many alignments. 
+  mismatches: "--mismatches 1"
+  naln:       "--bowtie_m 50"
+  mmap:       "--mmap u"                # unique seeded guide for handling multi-mapped reads
+  dicermin:   "--dicermin 20"           # minimum size of a Dicer-processed small RNA.
+  dicermax:   "--dicermax 24"           # maximum size of a Dicer-processed small RNA.
+  foldsize:   "--foldsize 1000"            # size of genomic RNA segments for folding for MIRNA search
+  pad:        "--pad 100"                 # clusters of sRNAs merged if distance less/equal to pad value
+  mincov:     "--mincov 20"                 # clusters of small RNAs must have at least this many alignments default: 20
+  #maxmiRUnpaired: "-maxmiRUnpaired 5"   # max number of unpaired miRNA nts in a miRNA/miRNA* duplex		
+  #miRType:   "plant"                   # plant or animal. plant sets -maxmiRHPPairs to 150 -maxmiRUnpaired 5 -maxLoopLength 100000
+  
+
+# Trimming parameters
+trim:
+  min_length: "18"
+  max_length: "25"
+
+# inverted repeat script from ShortStack
+einverted_params: "-maxrepeat 10000 -gap 12 -threshold 50 -match 3 -mismatch -4"
+
+# Picard tools
+sam2fastq: "/zfs/datastore0/software/src/picard-tools/SamToFastq.jar"
+
+
+

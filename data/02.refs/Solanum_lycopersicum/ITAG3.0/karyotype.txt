@@ -1,0 +1,12 @@
+chr	-	SL3.0ch01	chr1	0	98455869	chr1
+chr	-	SL3.0ch02	chr2	0	55977580	chr2
+chr	-	SL3.0ch03	chr3	0	72290146	chr3
+chr	-	SL3.0ch04	chr4	0	66557038	chr4
+chr	-	SL3.0ch05	chr5	0	66723567	chr5
+chr	-	SL3.0ch06	chr6	0	49794276	chr6
+chr	-	SL3.0ch07	chr7	0	68175699	chr7
+chr	-	SL3.0ch08	chr8	0	65987440	chr8
+chr	-	SL3.0ch09	chr9	0	72906345	chr9
+chr	-	SL3.0ch10	chr10	0	65633393	chr10
+chr	-	SL3.0ch11	chr11	0	56597135	chr11
+chr	-	SL3.0ch12	chr12	0	68126175	chr12

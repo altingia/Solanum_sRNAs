@@ -1,0 +1,485 @@
+import os
+import subprocess
+#import pandas as pd
+
+
+#########################
+## Pipeline configuration
+##########################
+configfile:"config.yaml"
+
+wildcard_constraints:
+  dataset="[Aa-Zz0-9]+"
+
+# directories 
+FQ_DIR = config["fastqdir"]
+WORKING_DIR = config["workdir"] 
+RES_DIR = config["resultdir"]
+
+# internal standards 
+SPIKES = config["refs"]["spikes"]
+SPIKES_BASENAME = os.path.basename(SPIKES)
+
+# Reference fasta files and basename (just the fasta filename)
+VIRUS = config["refs"]["virus"]
+RFAM = config["refs"]["rfam"]
+TRANSCRIPTOME = config["refs"]["transcriptome"]
+CHROM_SIZES = config["refs"]["chromsizes"]
+GENOME = config["refs"]["genome"]
+
+###########
+## Programs
+###########
+# Bowtie2 parameters
+BOWTIE2_PARAMS_SPIKES = " ".join(config["bowtie2"]["spikes_params"].values())
+BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
+
+# Picard tools
+SamToFastq = config["sam2fastq"]
+
+# ShortStack parameters
+SHORTSTACK_PARAMS = " ".join(config["shortstack"].values())
+
+###################
+## Other parameters
+###################
+
+# read length parameters for trimming
+MIN_LEN = config["trim"]["min_length"]
+MAX_LEN = config["trim"]["max_length"]
+
+# Threads
+THREADS = config["threads"]
+
+####################
+## Desired outputs
+####################
+
+# Lengths
+LENGTHS = expand(RES_DIR + "distri/{sample}.{trim}.txt",sample=config["samples"],trim=["original","trimmed"])
+
+# Counts
+SPIKES_COUNTS = expand(RES_DIR + "spikes/{sample}.txt",sample=config["samples"])
+SEQCOUNTS = expand(RES_DIR + "counts/{sample}.counts.txt",sample=config["samples"])
+
+# ShortStack
+SHORTSTACK = expand(RES_DIR + "shortstack/{sample}/Results.txt",sample=config["samples"])
+BIGWIGS = expand(RES_DIR + "bigwig/{sample}.bw",sample=config["samples"])
+
+# non-redundant miRNAs
+MIRNAS = RES_DIR + "miRNAs.fasta"
+
+# Snakefile and config file used
+MASTER_FILES = [RES_DIR + "Snakefile",RES_DIR + "config.yaml"]
+
+
+rule all: 
+	input: 		
+		SPIKES,	
+		SPIKES_COUNTS,
+		LENGTHS,	
+		SEQCOUNTS,
+		SHORTSTACK,
+		MIRNAS,
+		BIGWIGS,
+		MASTER_FILES
+	message:"All done!"
+     
+#####################
+## Copy master files
+####################
+rule copy_master_files:
+    input:
+        "Snakefile",
+        "config.yaml"
+    output: 
+        RES_DIR + "Snakefile",
+        RES_DIR + "config.yaml"
+    shell:
+        "cp {input} results/"
+
+###################################################
+## Merge all identified miRNA 
+###################################################
+
+rule merge_all_identified_miRNAs:
+    input:
+        expand(RES_DIR + "shortstack/{sample}/Results.txt",sample=config["samples"])
+    output:
+        RES_DIR + "miRNAs.fasta"
+    message:"Making a non-redundant fasta file of all detected miRNAs"
+    shell:
+         "python ../../scripts/merge_mirnas_from_shortstack.py -l {input} -f {output}"
+
+#####################
+## Concatenate counts
+#####################
+rule concatenate_counts:
+    input:
+        RES_DIR + "counts/{sample}.01_original.txt",
+        RES_DIR + "counts/{sample}.02_spikes.txt",
+        RES_DIR + "counts/{sample}.03_trimmed.txt",
+        RES_DIR + "counts/{sample}.04_virus.txt",
+        RES_DIR + "counts/{sample}.05_ncRNA.txt",
+        RES_DIR + "counts/{sample}.06_mRNA.txt",
+        RES_DIR + "counts/{sample}.07_ShortStack.txt"
+    output:
+        RES_DIR + "counts/{sample}.counts.txt"
+    message:"concatenating counts at all steps for {wildcards.sample}"
+    shell:
+        "cat {input} >> {output}"
+              
+
+######################
+## Shortstack analysis 
+######################
+rule bedgraph2bigwig:
+    input:
+        bedgraph = RES_DIR + "bigwig/{sample}.bedgraph",
+        sizes = CHROM_SIZES
+    output:
+        RES_DIR + "bigwig/{sample}.bw"
+    message:"generating {wildcards.sample} BigWig file" 
+    params:
+        RES_DIR + "bigwig/"
+    shell:
+        """
+        for f in {input.bedgraph};
+        do
+            echo "converting $f file to bigwig format"
+            samplename=$(basename $f .bedgraph)
+            echo $samplename
+            bedGraphToBigWig $f {CHROM_SIZES} $samplename.bw
+            mv $samplename.bw {params}$samplename.bw
+        done
+        """
+
+rule copy_chromosome_sizes:
+    input:
+        CHROM_SIZES
+    output:
+        temp("chromsizes.tab")
+    shell:"cp {input} {output}"
+
+rule bam2bedgraph:
+    input:
+        bam = RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+    output:
+        RES_DIR + "bigwig/{sample}.bedgraph"
+    message:"converting {wildcards.sample} to bedgraph"
+    params:
+        "{sample}.bg"
+    shell:
+        "bedtools genomecov -bg -ibam {input} > {params};"
+        "bedSort {params} {output};"
+        "rm {params}"
+
+rule count_unmapped_after_ShortStack:
+    input:
+        bam = RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+    output:
+        RES_DIR + "counts/{sample}.07_ShortStack.txt"
+    message:"counting {wildcards.sample} sequences after ShortStack alignment"
+    shell:"""
+         samtools index {input};
+         count=$(($(samtools view -f 4 -c {input.bam})))
+         nrcount=$(($(samtools view -f 4 {input.bam} |awk '{{print $10}}' |sort|uniq|wc -l)))
+         echo "{wildcards.sample}\t07_ShortStack\t$count\t$nrcount" >> {output} 
+         """
+
+rule shortstack:
+    input:
+        reads =  WORKING_DIR + "mRNA/{sample}_unaligned.fastq",
+        genome = GENOME
+    output:
+        RES_DIR + "shortstack/{sample}/Results.txt",
+        RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+    message:"Shortstack analysis of {wildcards.sample} using {input.genome} reference"
+    params:
+        RES_DIR + "shortstack/{sample}/"
+    shell:
+        "ShortStack "
+        "--outdir {wildcards.sample} "
+        "--bowtie_cores {THREADS} "
+        "--sort_mem 4G "
+        "{SHORTSTACK_PARAMS} "
+        "--readfile {input.reads} "
+        "--genome {input.genome};"
+        "cp -r {wildcards.sample}/* {params};"
+        "rm -r {wildcards.sample};"
+
+###########################
+## Removal of messenger RNA
+###########################
+rule count_mRNA:
+    input:
+        WORKING_DIR + "mRNA/{sample}_unaligned.fastq"
+    output:
+        RES_DIR + "counts/{sample}.06_mRNA.txt"
+    message:"counting {wildcards.sample} sequences after alignment to mRNA sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 06.mRNA"
+
+rule map_to_mRNAs:
+    input:
+        reads = WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
+        index = [WORKING_DIR + "index/mRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    output:
+        aln = WORKING_DIR + "mRNA/{sample}_aln.sam",
+	un =  WORKING_DIR + "mRNA/{sample}_unaligned.fastq"
+    message:"mapping {wildcards.sample} reads to mRNAs"
+    log:RES_DIR + "logs/{sample}_aln2mRNA.txt"
+    params:
+        WORKING_DIR + "index/mRNA"
+    shell:
+        "bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_mRNA_index:
+    input:
+        mrna = config["refs"]["transcriptome"]
+    output:
+        [WORKING_DIR + "index/mRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for {input}"
+    version:"2.1.0"
+    params:
+        WORKING_DIR + "index/mRNA"
+    shell:"bowtie2-build -q {input.mrna} {params}"
+
+#################################################################################
+## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
+#################################################################################
+rule count_ncRNA:
+    input:
+        WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
+    output:
+        RES_DIR + "counts/{sample}.05_ncRNA.txt"
+    message:"counting {wildcards.sample} sequences after alignment to non-coding RNA sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 05.ncRNA"
+
+rule map_to_ncRNAs:
+    input:
+        reads = WORKING_DIR + "virus/{sample}_unaligned.fastq",
+        index = [WORKING_DIR + "index/ncRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    output:
+        aln = WORKING_DIR + "ncRNA/{sample}_aln.sam",
+	un =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
+    message:"mapping {wildcards.sample} reads to non-coding RNA database"
+    log:RES_DIR + "logs/{sample}_aln2ncRNA.txt"
+    params:
+        WORKING_DIR + "index/ncRNA"
+    shell:
+        "bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_ncRNA_index:
+    input:
+        WORKING_DIR + "ncRNA/ncRNA.fasta"
+    output:
+        [WORKING_DIR + "index/ncRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for {input}"
+    version:"2.1.0"
+    params:
+        WORKING_DIR + "index/ncRNA"
+    shell:"bowtie2-build -q {input} {params}"
+
+rule merge_RFAM_TIGR_repeats:
+    input:
+        tigr = config["refs"]["tigr"]["rDNA"],
+        rfam = WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
+    output: 
+        WORKING_DIR + "ncRNA/ncRNA.fasta"
+    message:"merging RFAM and TIGR repeats (only ribosomal DNA) databases"
+    shell:"cat {input} >> {output}"
+          
+rule parse_RFAM_db:
+    input:
+        WORKING_DIR + "ncRNA/RFAM.fa"
+    output:
+        WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
+    message:"keeping records for Solanum lycopersicum species"
+    shell:
+        "cat {input} |grep -A1 'Solanum lycopersicum' | " # this keeps records for tomato
+        "sed -e '/microRNA/,+1d' > {output}" 		   # this removes the line and the following line when it matches microRNA
+
+rule get_RFAM_database:
+    output:
+        rfam = WORKING_DIR + "ncRNA/RFAM.fa"
+    message:"downloading RFAM database"
+    params:
+        rfamlink = config["refs"]["rfam"],
+    shell:
+        "wget -r --quiet {params};"
+        "gunzip --force ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/RF*.gz;"
+        "cat  ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/*.fa >> {output};"
+        "rm -r ftp.ebi.ac.uk/"
+        
+
+###########################################
+## removal of plant virus from all samples
+##########################################
+rule count_virus:
+    input:
+        WORKING_DIR + "virus/{sample}_unaligned.fastq"
+    output:
+        RES_DIR + "counts/{sample}.04_virus.txt"
+    message:"counting {wildcards.sample} sequences after alignment to virus sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 04.virus"
+
+rule map_to_plant_virus:
+    input: 
+        index = [WORKING_DIR + "index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]],
+        reads =  WORKING_DIR + "trim/{sample}.trimmed.fastq" 
+    output:
+        aln = WORKING_DIR + "virus/{sample}_aln.sam",
+        un = WORKING_DIR + "virus/{sample}_unaligned.fastq"
+    log: RES_DIR + "logs/{sample}_aln2virus.txt"
+    message:"mapping {wildcards.sample} reads to plant virus sequences" 
+    version: "2.1.0"
+    params:
+        WORKING_DIR + "index/virus"
+    shell:"bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_virus_index:
+    input:
+        virus = config["refs"]["virus"]
+    output:
+        [WORKING_DIR + "index/virus" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for {VIRUS}"
+    version:"2.1.0"
+    params:
+        WORKING_DIR + "index/virus"
+    shell:"bowtie2-build -q {input} {params}"
+
+##############################################
+## Trim reads for all samples + counts/lengths
+##############################################
+rule trimmed_seq_lengths:
+    input:
+        WORKING_DIR + "trim/{sample}.trimmed.fastq"
+    output:
+        RES_DIR + "distri/{sample}.trimmed.txt"
+    message:"computing trimmed read length distribution for {wildcards.sample}"
+    shell:
+        "python ../../scripts/read_length_distribution.py -f {input} -o {output} -n {wildcards.sample}_trimmed"
+
+rule count_trimmed:
+    input:
+        WORKING_DIR + "trim/{sample}.trimmed.fastq"
+    output:
+        RES_DIR + "counts/{sample}.03_trimmed.txt"
+    message:"counting {wildcards.sample} sequences after trimming"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 03.trimmed"
+
+rule trim_reads:
+    input:
+        WORKING_DIR + "spikes/{sample}_unaligned.fastq"
+    output:
+        WORKING_DIR + "trim/{sample}.trimmed.fastq"
+    message: "Trimming reads shorter than {0} and longer than {1}".format(MIN_LEN,MAX_LEN)
+    shell:"""
+	  cat {input} | paste - - - - | awk 'length($2)  >= {MIN_LEN} && length($2) <= {MAX_LEN}' |sed 's/\\t/\\n/g' > {output}
+	  """
+
+##################
+## Spikes analysis
+##################
+rule count_seqs_after_spikes:
+    input:
+        un =  WORKING_DIR + "spikes/{sample}_unaligned.fastq"
+    output:
+        RES_DIR + "counts/{sample}.02_spikes.txt"
+    message:"counting {wildcards.sample} original reads"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 02.spikes"
+
+rule counts_from_spikes:
+    input:
+        WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam",
+        WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam.bai"
+    output:
+        RES_DIR + "spikes/{sample}.txt"
+    message:"computing counts on spike-ins for {wildcards.sample}"
+    shell:"samtools idxstats {input} > {output}"
+
+rule index_spikebam:
+    input:
+        WORKING_DIR + "spikes/{sample}_spike_aln.bam"
+    output:
+        bam  = WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam", 
+        bai = WORKING_DIR + "spikes/{sample}_spike_aln.sorted.bam.bai"
+    message:"indexing {input}"
+    params: WORKING_DIR + "spikes/{sample}_spike_aln.sorted"
+    shell:
+        "samtools sort {input} {params};"
+        "samtools index {output.bam}"
+
+rule convert2bam:
+    input:
+        WORKING_DIR + "spikes/{sample}_spike_aln.sam"
+    output:
+        temp(WORKING_DIR + "spikes/{sample}_spike_aln.bam")
+    message:"converting {input} to BAM"
+    shell:"samtools view -b {input} > {output}"
+
+rule aln2spikes:
+    input:
+        fq= FQ_DIR + "{sample}.fastq",
+        index = [WORKING_DIR + "index/spikes" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    output:
+        aln = temp(WORKING_DIR + "spikes/{sample}_spike_aln.sam"),
+        un =  WORKING_DIR + "spikes/{sample}_unaligned.fastq"
+    message: "Aligning {wildcards.sample} reads to spike sequences."
+    log:
+        RES_DIR + "logs/{sample}_spikes.txt"
+    version: "2.1.0"
+    params:
+        WORKING_DIR + "index/spikes"
+    shell:
+        "bowtie2 {BOWTIE2_PARAMS_SPIKES} -p {THREADS} -x {params} --un {output.un} -U {input.fq} -S {output.aln} 2>{log}"
+
+rule make_spike_index:
+    input:
+        spikes = config["refs"]["spikes"]
+    output:
+        [WORKING_DIR + "index/spikes" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for {SPIKES}"
+    version:"2.1.0"
+    params:
+        WORKING_DIR + "index/spikes"
+    shell:
+        "bowtie2-build -q {SPIKES} {params}"
+
+#####################################################
+## Output the read lengths in the different samples
+##################################################### 
+rule original_seq_lengths:
+    input:
+        fq= FQ_DIR + "{sample}.fastq"
+    output:
+        RES_DIR + "distri/{sample}.original.txt"
+    message:"computing original read length distribution for {wildcards.sample}"
+    shell:
+        "python ../../scripts/read_length_distribution.py -f {input} -o {output} -n {wildcards.sample}_original"
+
+#####################################################
+## Count number of sequences in the different samples
+##################################################### 
+rule count_original_seqs:
+    input:
+        fq= FQ_DIR + "{sample}.fastq"
+    output:
+        RES_DIR + "counts/{sample}.01_original.txt"
+    message:"counting {wildcards.sample} original reads"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 01.original"
+
+
+
