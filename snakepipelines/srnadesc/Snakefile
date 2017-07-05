@@ -61,7 +61,7 @@ LENGTHS = expand(RES_DIR + "distri/{sample}.{trim}.txt",sample=config["samples"]
 # Counts
 SPIKES_COUNTS = expand(RES_DIR + "spikes/{sample}.txt",sample=config["samples"])
 SEQCOUNTS = expand(RES_DIR + "counts/{sample}.counts.txt",sample=config["samples"])
-	NRSEQ_COUNTS = expand(RES_DIR + "nrcounts/{sample}.txt",sample=config["samples"])
+NRSEQ_COUNTS = expand(RES_DIR + "nrcounts/{sample}.txt",sample=config["samples"])
 
 # ShortStack
 SHORTSTACK = expand(RES_DIR + "shortstack/{sample}/Results.txt",sample=config["samples"])
