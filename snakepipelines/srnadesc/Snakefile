@@ -22,6 +22,8 @@ SPIKES_BASENAME = os.path.basename(SPIKES)
 
 # Reference fasta files and basename (just the fasta filename)
 VIRUS = config["refs"]["virus"]
+MITO = config["refs"]["mitochondria"]
+CHLORO = config["refs"]["chloroplast"]
 RFAM = config["refs"]["rfam"]
 TRANSCRIPTOME = config["refs"]["transcriptome"]
 CHROM_SIZES = config["refs"]["chromsizes"]
@@ -61,6 +63,7 @@ LENGTHS = expand(RES_DIR + "distri/{sample}.{trim}.txt",sample=config["samples"]
 # Counts
 SPIKES_COUNTS = expand(RES_DIR + "spikes/{sample}.txt",sample=config["samples"])
 SEQCOUNTS = expand(RES_DIR + "counts/{sample}.counts.txt",sample=config["samples"])
+NRSEQ_COUNTS = expand(RES_DIR + "nrcounts/{sample}.txt",sample=config["samples"])
 
 # ShortStack
 SHORTSTACK = expand(RES_DIR + "shortstack/{sample}/Results.txt",sample=config["samples"])
@@ -79,6 +82,7 @@ rule all:
 		SPIKES_COUNTS,
 		LENGTHS,	
 		SEQCOUNTS,
+		NRSEQ_COUNTS,
 		SHORTSTACK,
 		MIRNAS,
 		BIGWIGS,
@@ -120,9 +124,10 @@ rule concatenate_counts:
         RES_DIR + "counts/{sample}.02_spikes.txt",
         RES_DIR + "counts/{sample}.03_trimmed.txt",
         RES_DIR + "counts/{sample}.04_virus.txt",
-        RES_DIR + "counts/{sample}.05_ncRNA.txt",
-        RES_DIR + "counts/{sample}.06_mRNA.txt",
-        RES_DIR + "counts/{sample}.07_ShortStack.txt"
+        RES_DIR + "counts/{sample}.05_mitochondria.txt",
+        RES_DIR + "counts/{sample}.06_chloroplast.txt",
+        RES_DIR + "counts/{sample}.07_ncRNA.txt",
+        RES_DIR + "counts/{sample}.08_ShortStack.txt"
     output:
         RES_DIR + "counts/{sample}.counts.txt"
     message:"concatenating counts at all steps for {wildcards.sample}"
@@ -178,18 +183,18 @@ rule count_unmapped_after_ShortStack:
     input:
         bam = RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
     output:
-        RES_DIR + "counts/{sample}.07_ShortStack.txt"
+        RES_DIR + "counts/{sample}.08_ShortStack.txt"
     message:"counting {wildcards.sample} sequences after ShortStack alignment"
     shell:"""
          samtools index {input};
          count=$(($(samtools view -f 4 -c {input.bam})))
          nrcount=$(($(samtools view -f 4 {input.bam} |awk '{{print $10}}' |sort|uniq|wc -l)))
-         echo "{wildcards.sample}\t07_ShortStack\t$count\t$nrcount" >> {output} 
+         echo "{wildcards.sample}\t08_ShortStack\t$count\t$nrcount" >> {output} 
          """
 
 rule shortstack:
     input:
-        reads =  WORKING_DIR + "mRNA/{sample}_unaligned.fastq",
+        reads =  WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
         genome = GENOME
     output:
         RES_DIR + "shortstack/{sample}/Results.txt",
@@ -208,43 +213,6 @@ rule shortstack:
         "cp -r {wildcards.sample}/* {params};"
         "rm -r {wildcards.sample};"
 
-###########################
-## Removal of messenger RNA
-###########################
-rule count_mRNA:
-    input:
-        WORKING_DIR + "mRNA/{sample}_unaligned.fastq"
-    output:
-        RES_DIR + "counts/{sample}.06_mRNA.txt"
-    message:"counting {wildcards.sample} sequences after alignment to mRNA sequences"
-    shell:
-        "python ../../scripts/count_seqs_in_fastq.py "
-        "-f {input} -o {output} -f1 {wildcards.sample} -f2 06.mRNA"
-
-rule map_to_mRNAs:
-    input:
-        reads = WORKING_DIR + "ncRNA/{sample}_unaligned.fastq",
-        index = [WORKING_DIR + "index/mRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
-    output:
-        aln = WORKING_DIR + "mRNA/{sample}_aln.sam",
-	un =  WORKING_DIR + "mRNA/{sample}_unaligned.fastq"
-    message:"mapping {wildcards.sample} reads to mRNAs"
-    log:RES_DIR + "logs/{sample}_aln2mRNA.txt"
-    params:
-        WORKING_DIR + "index/mRNA"
-    shell:
-        "bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
-
-rule make_mRNA_index:
-    input:
-        mrna = config["refs"]["transcriptome"]
-    output:
-        [WORKING_DIR + "index/mRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
-    message:"creating bowtie2 index for {input}"
-    version:"2.1.0"
-    params:
-        WORKING_DIR + "index/mRNA"
-    shell:"bowtie2-build -q {input.mrna} {params}"
 
 #################################################################################
 ## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
@@ -253,15 +221,15 @@ rule count_ncRNA:
     input:
         WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
     output:
-        RES_DIR + "counts/{sample}.05_ncRNA.txt"
+        RES_DIR + "counts/{sample}.07_ncRNA.txt"
     message:"counting {wildcards.sample} sequences after alignment to non-coding RNA sequences"
     shell:
         "python ../../scripts/count_seqs_in_fastq.py "
-        "-f {input} -o {output} -f1 {wildcards.sample} -f2 05.ncRNA"
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 07.ncRNA"
 
 rule map_to_ncRNAs:
     input:
-        reads = WORKING_DIR + "virus/{sample}_unaligned.fastq",
+        reads = WORKING_DIR + "chloroplast/{sample}_unaligned.fastq",
         index = [WORKING_DIR + "index/ncRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     output:
         aln = WORKING_DIR + "ncRNA/{sample}_aln.sam",
@@ -284,7 +252,7 @@ rule make_ncRNA_index:
         WORKING_DIR + "index/ncRNA"
     shell:"bowtie2-build -q {input} {params}"
 
-rule merge_RFAM_TIGR_repeats:
+rule merge_RFAM_TIGR_rDNA_repeats:
     input:
         tigr = config["refs"]["tigr"]["rDNA"],
         rfam = WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
@@ -315,6 +283,81 @@ rule get_RFAM_database:
         "cat  ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/*.fa >> {output};"
         "rm -r ftp.ebi.ac.uk/"
         
+################################
+## Removal of chloroplastic RNAs
+################################
+rule count_chloroplast:
+    input:
+        WORKING_DIR + "chloroplast/{sample}_unaligned.fastq"
+    output:
+        RES_DIR + "counts/{sample}.06_chloroplast.txt"
+    message:"counting {wildcards.sample} sequences after alignment to virus sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 06.chloroplast"
+
+rule map_to_chloroplast:
+    input: 
+        index = [WORKING_DIR + "index/chloroplast" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]],
+        reads =  WORKING_DIR + "mitochondria/{sample}_unaligned.fastq" 
+    output:
+        aln = WORKING_DIR + "chloroplast/{sample}_aln.sam",
+        un = WORKING_DIR + "chloroplast/{sample}_unaligned.fastq"
+    log: RES_DIR + "logs/{sample}_aln2chloroplast.txt"
+    message:"mapping {wildcards.sample} reads to chloroplastl genome" 
+    version: "2.1.0"
+    params:
+        WORKING_DIR + "index/chloroplast"
+    shell:"bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_chloroplastl_index:
+    input:
+        mito = config["refs"]["chloroplast"]
+    output:
+        [WORKING_DIR + "index/chloroplast" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for chloroplast genome"
+    version:"2.1.0"
+    params:
+        WORKING_DIR + "index/chloroplast"
+    shell:"bowtie2-build -q {input} {params}"
+
+################################
+## Removal of mitochondrial RNAs
+################################
+rule count_mitochondria:
+    input:
+        WORKING_DIR + "mitochondria/{sample}_unaligned.fastq"
+    output:
+        RES_DIR + "counts/{sample}.05_mitochondria.txt"
+    message:"counting {wildcards.sample} sequences after alignment to virus sequences"
+    shell:
+        "python ../../scripts/count_seqs_in_fastq.py "
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 05.mitochondria"
+
+rule map_to_mitochondria:
+    input: 
+        index = [WORKING_DIR + "index/mitochondria" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]],
+        reads =  WORKING_DIR + "virus/{sample}_unaligned.fastq" 
+    output:
+        aln = WORKING_DIR + "mitochondria/{sample}_aln.sam",
+        un = WORKING_DIR + "mitochondria/{sample}_unaligned.fastq"
+    log: RES_DIR + "logs/{sample}_aln2mitochondria.txt"
+    message:"mapping {wildcards.sample} reads to mitochondrial genome" 
+    version: "2.1.0"
+    params:
+        WORKING_DIR + "index/mitochondria"
+    shell:"bowtie2 {BOWTIE2_PARAMS} -p {THREADS} -x {params} --un {output.un} -U {input.reads} -S {output.aln} 2>{log}"
+
+rule make_mitochondrial_index:
+    input:
+        mito = config["refs"]["mitochondria"]
+    output:
+        [WORKING_DIR + "index/mitochondria" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
+    message:"creating bowtie2 index for mitochondrial genome"
+    version:"2.1.0"
+    params:
+        WORKING_DIR + "index/mitochondria"
+    shell:"bowtie2-build -q {input} {params}"
 
 ###########################################
 ## removal of plant virus from all samples
@@ -481,5 +524,11 @@ rule count_original_seqs:
         "python ../../scripts/count_seqs_in_fastq.py "
         "-f {input} -o {output} -f1 {wildcards.sample} -f2 01.original"
 
-
-
+rule count_nr_sequences:
+    input:
+        fq= FQ_DIR + "{sample}.fastq"
+    output:
+        RES_DIR + "nrcounts/{sample}.txt"
+    shell:
+        "python ../../scripts/count_nr_sequence_in_fastq.py "
+        "-i {input} -o {output} "
