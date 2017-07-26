@@ -24,7 +24,6 @@ SPIKES_BASENAME = os.path.basename(SPIKES)
 VIRUS = config["refs"]["virus"]
 MITO = config["refs"]["mitochondria"]
 CHLORO = config["refs"]["chloroplast"]
-RFAM = config["refs"]["rfam"]
 TRANSCRIPTOME = config["refs"]["transcriptome"]
 CHROM_SIZES = config["refs"]["chromsizes"]
 GENOME = config["refs"]["genome"]
@@ -35,9 +34,6 @@ GENOME = config["refs"]["genome"]
 # Bowtie2 parameters
 BOWTIE2_PARAMS_SPIKES = " ".join(config["bowtie2"]["spikes_params"].values())
 BOWTIE2_PARAMS = " ".join(config["bowtie2"]["general_params"].values())
-
-# Picard tools
-SamToFastq = config["sam2fastq"]
 
 # ShortStack parameters
 SHORTSTACK_PARAMS = " ".join(config["shortstack"].values())
@@ -168,7 +164,7 @@ rule copy_chromosome_sizes:
 
 rule bam2bedgraph:
     input:
-        bam = RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+        bam = RES_DIR + "shortstack/{sample}/{sample}_aligned.bam"
     output:
         RES_DIR + "bigwig/{sample}.bedgraph"
     message:"converting {wildcards.sample} to bedgraph"
@@ -181,7 +177,7 @@ rule bam2bedgraph:
 
 rule count_unmapped_after_ShortStack:
     input:
-        bam = RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+        bam = RES_DIR + "shortstack/{sample}/{sample}_aligned.bam"
     output:
         RES_DIR + "counts/{sample}.08_ShortStack.txt"
     message:"counting {wildcards.sample} sequences after ShortStack alignment"
@@ -191,6 +187,14 @@ rule count_unmapped_after_ShortStack:
          nrcount=$(($(samtools view -f 4 {input.bam} |awk '{{print $10}}' |sort|uniq|wc -l)))
          echo "{wildcards.sample}\t08_ShortStack\t$count\t$nrcount" >> {output} 
          """
+
+rule rename_bams:
+    input:
+        RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+    output:
+        RES_DIR + "shortstack/{sample}/{sample}_aligned.bam"
+    message:"renaming shortstack BAM files for {wildcards.sample}"
+    shell:"mv {input} {output}"
 
 rule shortstack:
     input:
@@ -212,7 +216,6 @@ rule shortstack:
         "--genome {input.genome};"
         "cp -r {wildcards.sample}/* {params};"
         "rm -r {wildcards.sample};"
-
 
 #################################################################################
 ## Removal of non-coding RNAs (rRNA, tRNA, snoRNA) using non-coding RNA databases
@@ -243,7 +246,7 @@ rule map_to_ncRNAs:
 
 rule make_ncRNA_index:
     input:
-        WORKING_DIR + "ncRNA/ncRNA.fasta"
+        config["refs"]["ncrna"]
     output:
         [WORKING_DIR + "index/ncRNA" + x for x in [".1.bt2",".2.bt2",".3.bt2",".4.bt2",".rev.1.bt2",".rev.2.bt2"]]
     message:"creating bowtie2 index for {input}"
@@ -251,38 +254,7 @@ rule make_ncRNA_index:
     params:
         WORKING_DIR + "index/ncRNA"
     shell:"bowtie2-build -q {input} {params}"
-
-rule merge_RFAM_TIGR_rDNA_repeats:
-    input:
-        tigr = config["refs"]["tigr"]["rDNA"],
-        rfam = WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
-    output: 
-        WORKING_DIR + "ncRNA/ncRNA.fasta"
-    message:"merging RFAM and TIGR repeats (only ribosomal DNA) databases"
-    shell:"cat {input} >> {output}"
-          
-rule parse_RFAM_db:
-    input:
-        WORKING_DIR + "ncRNA/RFAM.fa"
-    output:
-        WORKING_DIR + "ncRNA/RFAM.parsed.fasta"
-    message:"keeping records for Solanum lycopersicum species"
-    shell:
-        "cat {input} |grep -A1 'Solanum lycopersicum' | " # this keeps records for tomato
-        "sed -e '/microRNA/,+1d' > {output}" 		   # this removes the line and the following line when it matches microRNA
-
-rule get_RFAM_database:
-    output:
-        rfam = WORKING_DIR + "ncRNA/RFAM.fa"
-    message:"downloading RFAM database"
-    params:
-        rfamlink = config["refs"]["rfam"],
-    shell:
-        "wget -r --quiet {params};"
-        "gunzip --force ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/RF*.gz;"
-        "cat  ftp.ebi.ac.uk/pub/databases/Rfam/12.0/fasta_files/*.fa >> {output};"
-        "rm -r ftp.ebi.ac.uk/"
-        
+      
 ################################
 ## Removal of chloroplastic RNAs
 ################################
