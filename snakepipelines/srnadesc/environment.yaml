@@ -13,5 +13,8 @@ dependencies:
   - ucsc-bedgraphtobigwig=332 
   - bowtie2=2.3.0
   - pandas=0.19.2
+<<<<<<< HEAD
   #- shortstack=3.6
+=======
+>>>>>>> f9c8a531907ee118fe06e22f682c1b788c5cec98
 

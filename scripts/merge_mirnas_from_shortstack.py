@@ -55,27 +55,33 @@ print("##############################")
 ## Start recursive merging (full outer join)
 ##########################################
 
-# initialize the first dataframe and merge
-df = pd.merge(dfs[0],dfs[1],on="MajorRNA",how="outer")
+# Merge depending on the number of samples
+if len(dfs) == 1:
+    print("nothing to merge since there is only one sample")
+    df = dfs[0]
 
-# starts to iterate and recursively merge the dfs
-for i in range(2,len(dfs)-1,1):
-    df = pd.merge(df,dfs[i],on="MajorRNA",how="outer")
-    print("\n")
-    print("#############################")
-    rows, columns = df.shape
-    print("This is the {0}th merge. The corresponding dataframe has {1} lines".format(str(i),str(rows)))
-    print("##############################")
+else:
+    # initialize the first dataframe and merge
+    df = pd.merge(dfs[0],dfs[1],on="MajorRNA",how="outer")
+    
+    # starts to iterate and recursively merge the dfs
+    for i in range(2,len(dfs)-1,1):
+        df = pd.merge(df,dfs[i],on="MajorRNA",how="outer")
+        print("\n")
+        print("#############################")
+        rows, columns = df.shape
+        print("This is the {0}th merge. The corresponding dataframe has {1} lines".format(str(i),str(rows)))
+        print("##############################")
 
-# the final iteration is to merge the last dataframe
-df = pd.merge(df,dfs[len(dfs)-1],on="MajorRNA",how="outer")   
-print("\n")
-print("#############################")
-rows, columns = df.shape
-print("This is the {0}th merge. The corresponding dataframe has {1} lines".format(str(len(dfs)-1),str(rows)))
-print("##############################")
-print("\n")
-print("merging done")
+        # the final iteration is to merge the last dataframe
+        df = pd.merge(df,dfs[len(dfs)-1],on="MajorRNA",how="outer")   
+        print("\n")
+        print("#############################")
+        rows, columns = df.shape
+        print("This is the {0}th merge. The corresponding dataframe has {1} lines".format(str(len(dfs)-1),str(rows)))
+        print("##############################")
+        print("\n")
+        print("merging done")
 
 
 ###########################

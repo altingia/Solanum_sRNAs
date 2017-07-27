@@ -1,0 +1,12 @@
+chr	-	Spenn-ch01	chr1	0	109333515	chr1
+chr	-	Spenn-ch02	chr2	0	59803892	chr2
+chr	-	Spenn-ch03	chr3	0	75414019	chr3
+chr	-	Spenn-ch04	chr4	0	77197300	chr4
+chr	-	Spenn-ch05	chr5	0	77991103	chr5
+chr	-	Spenn-ch06	chr6	0	35313140	chr6
+chr	-	Spenn-ch07	chr7	0	79292169	chr7
+chr	-	Spenn-ch08	chr8	0	70546659	chr8
+chr	-	Spenn-ch09	chr9	0	84057508	chr9
+chr	-	Spenn-ch10	chr10	0	82529941	chr10
+chr	-	Spenn-ch11	chr11	0	66223686	chr11
+chr	-	Spenn-ch12	chr12	0	83305730	chr12
