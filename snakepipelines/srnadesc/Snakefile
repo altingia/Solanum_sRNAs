@@ -98,9 +98,9 @@ rule copy_master_files:
     shell:
         "cp {input} results/"
 
-###################################################
+#############################
 ## Merge all identified miRNA 
-###################################################
+#############################
 
 rule merge_all_identified_miRNAs:
     input:

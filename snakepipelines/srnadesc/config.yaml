@@ -12,7 +12,7 @@ refs:
   transcriptome: "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_cDNA.fasta"
   mitochondria: "/home/mgalland/data/02_refs/Solanum_lycopersicum/organelles/GCA_000325825.1_S_lycopersicum_mitochondrion_v1.5.fasta"
   chloroplast: "/home/mgalland/data/02_refs/Solanum_lycopersicum/organelles/chloroplast_genome_KP117024.fasta"
-  ncrna: "../../data/02.refs/ncRNA/ncRNA.fasta"
+  ncrna: "../../data/02.refs/ncRNA/noncodingRNA.fasta"
   spikes: "../../data/02.refs/spikes/SSPK_v3_removeOldSeq.fa"
   virus: "../../data/02.refs/virus/allplantseqs.fasta" 
   mirbase: 
