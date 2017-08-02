@@ -69,7 +69,7 @@ BIGWIGS = expand(RES_DIR + "bigwig/{sample}.bw",sample=config["samples"])
 MIRNAS = RES_DIR + "miRNAs.fasta"
 
 # Snakefile and config file used
-MASTER_FILES = [RES_DIR + "Snakefile",RES_DIR + "config.yaml"]
+MASTER_FILES = [RES_DIR + "Snakefile",RES_DIR + "config.yaml",RES_DIR + "environment.yaml"]
 
 
 rule all: 
@@ -91,10 +91,12 @@ rule all:
 rule copy_master_files:
     input:
         "Snakefile",
-        "config.yaml"
+        "config.yaml",
+        "environment.yaml"
     output: 
         RES_DIR + "Snakefile",
-        RES_DIR + "config.yaml"
+        RES_DIR + "config.yaml",
+        RES_DIR + "environment.yaml"
     shell:
         "cp {input} results/"
 
@@ -263,7 +265,7 @@ rule count_chloroplast:
         WORKING_DIR + "chloroplast/{sample}_unaligned.fastq"
     output:
         RES_DIR + "counts/{sample}.06_chloroplast.txt"
-    message:"counting {wildcards.sample} sequences after alignment to virus sequences"
+    message:"counting {wildcards.sample} sequences after alignment to chloroplast sequences"
     shell:
         "python ../../scripts/count_seqs_in_fastq.py "
         "-f {input} -o {output} -f1 {wildcards.sample} -f2 06.chloroplast"
@@ -301,7 +303,7 @@ rule count_mitochondria:
         WORKING_DIR + "mitochondria/{sample}_unaligned.fastq"
     output:
         RES_DIR + "counts/{sample}.05_mitochondria.txt"
-    message:"counting {wildcards.sample} sequences after alignment to virus sequences"
+    message:"counting {wildcards.sample} sequences after alignment to mitochondrial sequences"
     shell:
         "python ../../scripts/count_seqs_in_fastq.py "
         "-f {input} -o {output} -f1 {wildcards.sample} -f2 05.mitochondria"

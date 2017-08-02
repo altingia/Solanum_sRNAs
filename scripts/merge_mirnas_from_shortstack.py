@@ -14,7 +14,7 @@ shortstack/
 	PI127826/
 		|-- Results.txt
 
-Example: python merge_mirnas_from_shortstack.py -d shortstack/C32/Results.txt shortstack/LA4024/Results.txt 
+Example: python merge_mirnas_from_shortstack.py -l shortstack/C32/Results.txt shortstack/LA4024/Results.txt 
 """
 
 ####################

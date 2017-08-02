@@ -1,5 +1,5 @@
 ---
-threads: 10
+threads: 5
 fastqdir: "/home/mgalland/data/01_sequencing_runs/20151007_small_RNAs_20_accessions/"
 workdir: "scratch/"
 resultdir: "results/"
