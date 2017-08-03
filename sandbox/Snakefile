@@ -1,5 +1,6 @@
-from ../../+
-import SHS
+# import class
+from ../scripts/SHS_class import SHS
+
 
 SHORTSTACK_DIR = "~/SURF../../../06.results_from_xp/sRNA-Seq/srnadesc/20170523_srnadesc_shortstack3.6/results/shortstack/"
 
