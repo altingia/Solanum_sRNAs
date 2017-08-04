@@ -1,2 +1,2 @@
 # Solanum_sRNAs
-Code and data related to small RNAs in wild tomato species.
+Repository for softwares, Snakemake pipelines related to small RNAs in Solanum sp (wild tomato species)

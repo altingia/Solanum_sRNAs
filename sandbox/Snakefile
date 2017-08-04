@@ -1,0 +1,41 @@
+# import class
+from ../scripts/SHS_class import SHS
+
+
+SHORTSTACK_DIR = "~/SURF../../../06.results_from_xp/sRNA-Seq/srnadesc/20170523_srnadesc_shortstack3.6/results/shortstack/"
+
+SAMPLES, = glob_wildcards(SHORTSTACK_DIR + "{sample}")
+
+
+
+#################
+# Desired outputs
+#################
+rule all:
+    input:
+        expand("results/{sample}.mature_mirna.fasta",sample=SAMPLES)
+    message:"all done!"
+
+
+#########################
+# Rules of the Snakefile
+#######################
+rule get_mirnas_from_shortstack_results:
+    input:
+        SHORTSTACK_DIR + "{sample}/Results.txt"
+    output:
+        mirna = "results/{sample}.mirna.fasta",
+        bed = "results/{sample}.mirna.bed"
+    message:"Creating a fasta file for {wildcards.sample} from ShortStack de novo annotation of miRNAs"
+    run:
+        # select clusters that passed all miRNA criteria 
+        shs = SHS(input[0],path="results/",column="MIRNA",value="Y")
+        #  ?
+        select_data(shs)
+        # ?
+        concat_data(shs)
+        # get bed file for selected miRNAs
+        bedfile(shs)
+        # ?
+        make_fasta(shs)
+
