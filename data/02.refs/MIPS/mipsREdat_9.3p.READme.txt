@@ -1,0 +1,57 @@
+Mips-REdat is a database for plant repeats and was set up in conjunction with mips-REcat,
+a detailed hierarchical repeat classification catalog to facilitate
+a consistent cross species comparative transposon annotation of plant genomes.
+It contains an initial compilation of publicly available plant transposon sequences
+from e.g. Trep (http://wheat.pw.usda.gov/ITMI/Repeats/), TIGR repeats or 
+GenBank (http://www.ncbi.nlm.nih.gov/genbank/). The majority of the sequences stem from 
+de novo detected LTR-retrotransposon of the genomes presented in MIPS PlantsDB (http://mips.helmholtz-muenchen.de/plant/genomes.jsp).
+Mips-REdat does not contain sequences from Repbase (http://www.girinst.org/repbase/), which are under license restrictions.
+
+The following files are available for download under 
+
+ftp://ftpmips.helmholtz-muenchen.de/plants/REdat/
+
+
+- mipsREdat_9.3p_ALL.fasta (all repeats)
+- mipsREdat_9.3p_Eudicots_TEs.fasta (Dicot transposons)
+- mipsREdat_9.3p_Poaceae_TEs.fasta (Poaceae transposons)
+
+- mipsREdat_9.3p_Gossypium_TEs.fasta (subset of Dicot transposons)
+
+- mipsREcat_v4.xls 
+  (= repeat classification and ontology, to be seen as usefull working draft, without claim to be exhaustive and subjective to improvements)
+  contains mappings to the three letter code for transposon classification (Wicker et al, Nat Rev Genet. 2007, pmid 17984973),
+  the Repeatmasker classification and the TIGR repeat classification.
+
+
+header field content of the FASTA files (separated by |)
+-----------------------------------------------------------
+
+three-letter_classification_REdat_ID | name | repeatmasker_classification | REcat_key | ncbi_tax_id | Genus
+
+e.g.
+
+RLG_68679|Bd4_RLG_36|LTR/Gypsy|02.01.01.10.99|15368|Brachypodium
+
+
+If you use mipsREdat in your work please cite:
+
+Nussbaumer T, Martis MM, Roessner SK, Pfeifer M, Bader KC, Sharma S, Gundlach 
+H, Spannagl M. MIPS PlantsDB: a database framework for comparative plant genome
+research. Nucleic Acids Res. 2013 Jan;41(Database issue):D1144-51. doi:
+10.1093/nar/gks1153. Epub 2012 Nov 29. PubMed PMID: 23203886; 
+
+
+
+version updates
+################
+
+from 9.0 to 9.3
+
+- addition of 11,479 Gossypium repeats 
+	-> major changes between mipsREdat_9.0p_Eudicots_TEs.fasta and mipsREdat_9.3p_Eudicots_TEs.fasta
+	-> only very minor changes between mipsREdat_9.0p_Poaceae_TEs.fasta and mipsREdat_9.3p_Poaceae_TEs.fasta (no need to update)
+
+
+
+
