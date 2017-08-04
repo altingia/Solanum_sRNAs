@@ -1,5 +1,5 @@
 ---
-threads: 5
+threads: 10
 fastqdir: "/home/mgalland/data/01_sequencing_runs/20151007_small_RNAs_20_accessions/"
 workdir: "scratch/"
 resultdir: "results/"
@@ -64,7 +64,6 @@ shortstack:
 trim:
   min_length: "18"
   max_length: "25"
-
 
 
 

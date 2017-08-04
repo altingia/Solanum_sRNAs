@@ -179,6 +179,8 @@ rule bam2bedgraph:
 
 rule count_unmapped_after_ShortStack:
     input:
+        bam = RES_DIR + "shortstack/{sample}/{sample}_unaligned.bam"
+    output:
         bam = RES_DIR + "shortstack/{sample}/{sample}_aligned.bam"
     output:
         RES_DIR + "counts/{sample}.08_ShortStack.txt"
@@ -187,7 +189,7 @@ rule count_unmapped_after_ShortStack:
          samtools index {input};
          count=$(($(samtools view -f 4 -c {input.bam})))
          nrcount=$(($(samtools view -f 4 {input.bam} |awk '{{print $10}}' |sort|uniq|wc -l)))
-         echo "{wildcards.sample}\t08_ShortStack\t$count\t$nrcount" >> {output} 
+         echo "{wildcards.sample}\t06_ShortStack\t$count\t$nrcount" >> {output} 
          """
 
 rule rename_bams:
@@ -226,11 +228,11 @@ rule count_ncRNA:
     input:
         WORKING_DIR + "ncRNA/{sample}_unaligned.fastq"
     output:
-        RES_DIR + "counts/{sample}.07_ncRNA.txt"
+        RES_DIR + "counts/{sample}.05_ncRNA.txt"
     message:"counting {wildcards.sample} sequences after alignment to non-coding RNA sequences"
     shell:
         "python ../../scripts/count_seqs_in_fastq.py "
-        "-f {input} -o {output} -f1 {wildcards.sample} -f2 07.ncRNA"
+        "-f {input} -o {output} -f1 {wildcards.sample} -f2 05.ncRNA"
 
 rule map_to_ncRNAs:
     input:
