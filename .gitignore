@@ -1,6 +1,8 @@
-<<<<<<< HEAD
+*~
+*.fastq
+snakepipelines/srnadesc/scratch/
 *.DS_Store
-../.DS_Store
-=======
+*.fasta
 scr/ShortStack-3.8.3/
->>>>>>> 3deab576fcd71c7dee0d3cf3fd4536e4605275dd
+snakepipelines/srnadesc/.snakemake/
+results/
