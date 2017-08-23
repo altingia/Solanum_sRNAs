@@ -1,0 +1,16 @@
+channels:
+  - conda-forge
+  - bioconda
+  - r
+  - defaults
+dependencies:
+  - python=3.5.1
+  - samtools=1.5
+  - snakemake=3.8.2
+  - pyyaml=3.11
+  - star=2.5.3a
+  - ucsc-wigtobigwig = 332
+  - fastx_toolkit = 0.0.14
+  - perl-threaded = 5.22.0-10
+
+
