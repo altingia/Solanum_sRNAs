@@ -1,0 +1,268 @@
+"""
+Snakefile
+"""
+#############################
+# Load pipeline configuration
+#############################
+configfile: "config.yaml"
+
+WORKING_DIR = config["workdir"]
+RESULT_DIR = config["resultdir"]
+THREADS = config["threads"]
+
+
+# Get wildcards
+SAMPLES, = glob_wildcards(config["fastqdir"] + "{sample}.fastq.gz")
+
+#################
+# Desired output
+#################
+BAMS = expand(RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",sample=SAMPLES)
+BIGWIGS = expand(RESULT_DIR + "bigwig/{sample}_Signal.{u}.bw",sample=SAMPLES,u=["Unique","UniqueMultiple"])
+SPARTA = expand(RESULT_DIR + "sparta/{sample}/All.libs.validated.uniq.csv",sample=SAMPLES)
+
+rule all:
+	input:
+		BAMS,
+		BIGWIGS,
+		SPARTA
+	message:"all done!"
+        shell:"rm -r {WORKING_DIR}"
+   
+#################
+# Snakemake rules
+#################
+
+################################################
+# Copy master files and some files to RESULT_DIR
+################################################
+rule copy_master_files:
+    input:
+        "{sample}.miRNAs.fasta",
+        "Snakefile",
+        "config.yaml",
+        "environment.yaml"
+    output:
+        RESULT_DIR + "miRNAs/{sample}.miRNAs.fasta"
+    message:"copying master files"
+    shell:
+        "cp {input} {RESULT_DIR}"
+
+###################
+# sPARTA
+###################
+rule sparta:
+    input:
+        genome = config["refs"]["genome"],
+        annot = config["refs"]["gff"],
+        mirnas = "{sample}.miRNAs.fa",
+        lib = WORKING_DIR + "tally/{sample}.tag_count.txt"      
+    output:
+        RESULT_DIR + "sparta/{sample}/All.libs.validated.uniq.csv"
+    shadow: "shallow"
+    params:
+        genomefeature = config["sparta"]["genomefeature"],
+        dir = RESULT_DIR + "sparta/{sample}/"
+    message:"predicting miRNA targets for {wildcards.sample} using sPARTA"
+    shell:
+        "cp {input.lib} ./{wildcards.sample}.tag_count.txt ;"   # copy to current directory for sPARTA
+        "python3 sPARTA.py "
+        "-genomeFile {input.genome} "
+        "-annoType GFF "
+        "-annoFile {input.annot} "
+        "-genomeFeature {params.genomefeature} "
+        "-miRNAFile {input.mirnas} "
+        "-libs {wildcards.sample}.tag_count.txt "
+        "-tarPred "
+        "-tarScore --tag2FASTA --map2DD --validate ;"
+        "mv output/All.libs.validated.uniq.csv {params.dir} ;"
+        "mv predicted/All.targs.parsed.csv {params.dir} ;"
+        "rm -r output/ ;"
+        "rm -r predicted/ ;"
+        "rm -r PARE/ ;"
+        "rm -r genome/ ;"
+        "rm -r PAGe/ ;"
+        
+        
+				
+
+# get miRNAs from the srnadesc pipeline (ShortStack result file)
+rule get_mirnas:
+    input:
+        config["srnadesc"] + "{sample}/Results.txt"
+    output:
+        temp("{sample}.miRNAs.fa")
+    message:"extracting all miRNAs for {wildcards.sample} from {input}"
+    shell:
+        "python ../../scripts/get_mirnas_from_shortstack_res.py -i {input} -o {output}"
+        
+# convert to lib format (sequence -> counts)
+rule tally:
+    input:
+        WORKING_DIR + "trimmed/{sample}.fastq.gz"
+    output:
+        WORKING_DIR + "tally/{sample}.tag_count.txt"
+    message:"converting {input} to tag count format using Tally"
+    shell:
+        "tally -format '%R%t%X%n' -i {input} -o {output} --nozip"
+
+###################
+# Convert to bigwig
+###################
+rule bedgraph2bigwig:
+    input:
+        bg = RESULT_DIR + "star/{sample}_Signal.{u}.str1.out.wig",
+        chrom = config["refs"]["chromsizes"]
+    output:
+        RESULT_DIR + "bigwig/{sample}_Signal.{u}.bw",
+    message:"converting {input.bg} file to bigwig"
+    shell:
+        "wigToBigWig {input.bg} {input.chrom} {output}"
+             
+##########################
+# STAR map reads to genome
+##########################
+rule map_to_genome_using_STAR:
+    input:
+        ref = [WORKING_DIR + "star2pass/"+f for f in ["chrLength.txt","chrNameLength.txt","chrName.txt","chrStart.txt","Genome","genomeParameters.txt","SA","SAindex"]],
+        reads = WORKING_DIR + "trimmed/{sample}.fastq.gz"
+    output:
+        RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",
+        RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam.bai",
+        RESULT_DIR + "star/{sample}_Log.final.out",
+	RESULT_DIR + "star/{sample}_Signal.Unique.str1.out.wig",
+        RESULT_DIR + "star/{sample}_Signal.UniqueMultiple.str1.out.wig",   
+    message:"mapping the {wildcards.sample} reads to genome"
+    params:
+        prefix = RESULT_DIR + "star/{sample}_",
+        maxmismatches = config["star"]["mismatches"],
+        unmapped = config["star"]["unmapped"]	,
+        multimappers = config["star"]["multimappers"],
+        matchNminoverLread = config["star"]["matchminoverlengthread"],
+	outSamType = config["star"]["samtype"],
+        outWigType = config["star"]["outwigtype"],
+        outWigStrand = config["star"]["outwigstrand"],
+        outWigNorm = config["star"]["outwignorm"],
+        intronmax = config["star"]["intronmax"],
+        matesgap =  config["star"]["matesgap"],
+        genomeLoad = config["star"]["genomeload"],
+        genomeram = config["star"]["genomeram"],
+        genomedir = WORKING_DIR + "star2pass/"
+    shell:
+            "STAR --genomeDir {params.genomedir} "
+            "--readFilesIn {input.reads} "
+            "--readFilesCommand zcat "
+            "--outFilterMultimapNmax {params.multimappers} "
+            "--outFilterMismatchNmax {params.maxmismatches} "
+            "--alignMatesGapMax {params.matesgap} "
+            "--alignIntronMax {params.intronmax} "
+            "--outFilterMatchNminOverLread {params.matchNminoverLread} "
+            "--alignEndsType EndToEnd "
+            "--runThreadN {THREADS} "
+            "--outReadsUnmapped {params.unmapped} "
+            "--outFileNamePrefix {params.prefix} "
+            "--outSAMtype {params.outSamType} "
+            "--outWigType {params.outWigType} "
+            "--outWigStrand {params.outWigStrand} "
+            "--outWigNorm {params.outWigNorm} "
+            "--genomeLoad {params.genomeLoad} "
+            "--limitGenomeGenerateRAM {params.genomeram};"
+            "samtools index {output[0]}"
+
+#####################################################################
+## STAR 2-pass: genome indexing + splice junctions database generation 
+#####################################################################
+rule star2pass_index:
+    input:
+        sjdb = WORKING_DIR + "star1pass/SJ.concatenated.out.tab", 
+        ref= config["refs"]["genome"],
+        gtf = config["refs"]["gtf"]
+    output:
+        STAR_2PASS = [WORKING_DIR + "star2pass/"+ f for f in ["chrLength.txt","chrNameLength.txt","chrName.txt","chrStart.txt","Genome","genomeParameters.txt","SA","SAindex"]]
+    message: "STAR 2nd pass: generating genome index"	
+    params:
+        WORKING_DIR + "star2pass/"
+    shell:
+        "STAR --runMode genomeGenerate "
+        "--genomeDir {params} "
+        "--genomeFastaFiles {input.ref} "
+        "--runThreadN {THREADS} "
+        "--sjdbFileChrStartEnd {input.sjdb} "
+        "--sjdbOverhang 99 "
+        "--sjdbGTFfile {input.gtf};"
+        "touch -h {output}"
+
+rule concatenate_sjdb:
+    input:
+        expand(WORKING_DIR + "star1pass/{sample}_SJ.out.tab",sample=SAMPLES),
+    output:
+        WORKING_DIR + "star1pass/SJ.concatenated.out.tab"
+    message:"concatenating splice junctions from different samples "
+    shell:"cat {input} >> {output}"
+
+rule star1pass_align:
+    input:
+        reads = WORKING_DIR + "trimmed/{sample}.fastq.gz",
+        ref = WORKING_DIR + "star_index/"
+    output:
+        WORKING_DIR + "star1pass/{sample}_SJ.out.tab",
+        temp(WORKING_DIR + "star1pass/{sample}_Aligned.out.sam")
+    message:"STAR 1st pass: aligning {wildcards.sample} reads to generate splice junction files"
+    params:
+        WORKING_DIR + "star1pass/{sample}_"	
+    shell: 		
+        "STAR --runMode alignReads "
+        "--genomeDir {input.ref} "
+        "--readFilesIn {input.reads} "
+        "--outFileNamePrefix {params} "
+        "--outFilterIntronMotifs RemoveNoncanonical "
+        "--runThreadN {THREADS} "
+        "--readFilesCommand zcat"
+
+# sdjbOverhang specifies the length of the genomic sequence around the annotated junction to be used in constructing the splie junctions database. 
+#Ideally this length should be equal to ReadLength-1
+rule star_index:
+    input:
+        genome = config["refs"]["genome"],
+        gtf = config["refs"]["gtf"]
+    output:
+        WORKING_DIR + "star_index/"
+    message:"generation STAR genome index" 
+    params:
+        WORKING_DIR + "star_index/"
+    shell:
+        "mkdir -p {params};"
+        "STAR --runMode genomeGenerate "
+        "--genomeDir {params} "
+        "--genomeFastaFiles {input.genome} "
+        "--runThreadN {THREADS} "
+        "--sjdbOverhang 99 "
+        "--sjdbGTFfile {input.gtf}"
+
+######### 
+#trimming
+#########
+rule fastx_quality:
+    input:
+        fastq = config["fastqdir"] + "{sample}.fastq.gz"
+    output:
+        WORKING_DIR + "trimmed/{sample}.fastq.gz"
+    message: "removing low quality bases from {wildcards.sample} reads"
+    log:
+        RESULT_DIR + "logs/fastx/{sample}.log"
+    params :
+        qual = str(config['fastx_quality']['qual']),
+        phred = str(config['fastx_quality']['phred'])
+    shell:
+        "zcat {input} | "
+        "fastq_quality_filter "
+        "-v " 				# verbose
+        "-q {params.qual} " 		# Minimum quality score to keep 
+        "-z "				# compress output with gzip
+        "-Q{params.phred} "		# phred scale
+        "-o {output} "		 
+
+
+
+
+
