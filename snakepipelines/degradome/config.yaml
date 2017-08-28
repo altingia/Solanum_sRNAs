@@ -1,0 +1,45 @@
+---
+workdir:  "scratch/"
+threads:   5
+fastqdir:  "/home/mgalland/data/01_sequencing_runs/20170810_degradome_vertis/"
+resultdir: "results/"
+ 
+# miRNAs from the srnadesc pipeline (shortstack)
+srnadesc: "../../results/20170728_shortstack3.8/shortstack/" # the location of the Results.txt files from ShortStack
+
+## Genomic references, annotations and aligner indexes
+refs:
+  genome:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/S_lycopersicum_chromosomes.3.00.fa"
+  gff:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gff"
+  gtf:     "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/ITAG3.0_gene_models.gtf"
+  star:    "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/star_genome/"
+  bowtie:  "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/bowtie_index/S_lycopersicum_chromosomes.3.00.fa"
+  chromsizes: "/home/mgalland/data/02_refs/Solanum_lycopersicum/ITAG3.0/chromSizes.txt" # for bedgraph to bigwig conversion
+
+# Fastx
+fastx_quality:
+  qual: "10"  # min quality based on phred scale (from 0 to 40)
+  phred: "33" # phred: for illumina >1.8 the quality score are encoded by phred33
+
+# STAR aligner
+# RPM = read raw count / total number of uniquely mapping reads *10⁶  (for ".Unique." signal files)
+# RPM = read raw count / total number of unique and multiple mapping reads (for ".UniqueMultiple." signal files)
+star:
+  samtype: 'BAM SortedByCoordinate' # type of output
+  outwigtype: 'wiggle' # wig type 
+  outwigstrand: 'Unstranded' # strandness of wig file 
+  outwignorm: 'RPM' # These RPM normalizations are used by the ENCODE consortium. 
+  mismatches: '2' # alignment will be output only if it has less mismatches than this number
+  unmapped: 'Fastx' # unmapped accepted values are None or Fastx (to output fastq files of unmapped reads)
+  multimappers: '10' # maximum number of loci the read is allowed to map to
+  matchminoverlengthread: '0.66' # alignment will be output if percentage of read length is higher than this value (66% of 2x100bp = 132 nucleotides)	
+  intronmax: '25000' # max intron in tomato genome is 22,729
+  matesgap: '20000'  # max length between mates 
+  genomeload: 'NoSharedMemory' # see STAR manual
+  genomeram: '100000000000' # 100Gb RAM to generate genome
+
+# Sparta params
+sparta:
+  genomefeature: "0" # 0 to predict targets in gene coding regions, 1 in intergenic regions
+
+
