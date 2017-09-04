@@ -19,13 +19,17 @@ SAMPLES, = glob_wildcards(config["fastqdir"] + "{sample}.fastq.gz")
 #################
 BAMS = expand(RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",sample=SAMPLES)
 BIGWIGS = expand(RESULT_DIR + "bigwig/{sample}_Signal.{u}.bw",sample=SAMPLES,u=["Unique","UniqueMultiple"])
-SPARTA = expand(RESULT_DIR + "sparta/{sample}/All.libs.validated.uniq.csv",sample=SAMPLES)
+SPARTA = expand(RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv",sample=SAMPLES)
+MIRNAS = expand(RESULT_DIR + "miRNAs/{sample}.miRNAs.fa",sample=SAMPLES)
+MASTERS = [RESULT_DIR + f for f in ["Snakefile","config.yaml","environment.yaml"]]
 
 rule all:
 	input:
 		BAMS,
 		BIGWIGS,
-		SPARTA
+		SPARTA,
+		MIRNAS,
+		MASTERS
 	message:"all done!"
         shell:"rm -r {WORKING_DIR}"
    
@@ -38,16 +42,49 @@ rule all:
 ################################################
 rule copy_master_files:
     input:
-        "{sample}.miRNAs.fasta",
         "Snakefile",
         "config.yaml",
         "environment.yaml"
     output:
-        RESULT_DIR + "miRNAs/{sample}.miRNAs.fasta"
+        RESULT_DIR + "Snakefile",
+        RESULT_DIR + "config.yaml",
+        RESULT_DIR + "environment.yaml"
     message:"copying master files"
     shell:
         "cp {input} {RESULT_DIR}"
 
+rule copy_mirnas_to_results:
+    input:
+        "{sample}.miRNAs.fa"
+    output:
+        RESULT_DIR + "miRNAs/{sample}.miRNAs.fa"
+    shell:
+        "cp {input} {output}"
+
+
+#############################
+# Make T-plots (target plots)
+############################
+rule calculate_coverage:
+    input:
+        gff = WORKING_DIR + "gff/{sample}.targets.gff",
+        bam = RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam"
+    output:
+        cov = RESULT_DIR + "coverage/{sample}.coverage.txt"
+    message:"
+    shell:
+        "bedtools coverage -header -s -d -a {input.gff} -b {input.bam} 
+
+rule get_target_genes:
+    input:
+        sparta = RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv",
+        gff = config["refs"]["gff"]
+    output:
+        WORKING_DIR + "gff/{sample}.targets.gff"
+    message:"Filtering {input.gff} to keep mRNA targets of {wildcards.sample}"
+    shell:
+        "python sparta_targets_to_parsed_bed.py -i {input} --gff -o {output}"
+        
 ###################
 # sPARTA
 ###################
@@ -58,7 +95,7 @@ rule sparta:
         mirnas = "{sample}.miRNAs.fa",
         lib = WORKING_DIR + "tally/{sample}.tag_count.txt"      
     output:
-        RESULT_DIR + "sparta/{sample}/All.libs.validated.uniq.csv"
+        RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv"
     shadow: "shallow"
     params:
         genomefeature = config["sparta"]["genomefeature"],
@@ -75,16 +112,15 @@ rule sparta:
         "-libs {wildcards.sample}.tag_count.txt "
         "-tarPred "
         "-tarScore --tag2FASTA --map2DD --validate ;"
-        "mv output/All.libs.validated.uniq.csv {params.dir} ;"
-        "mv predicted/All.targs.parsed.csv {params.dir} ;"
+        "mv output/All.libs.validated.uniq.csv {params.dir}{wildcards.sample}.All.libs.validated.uniq.csv ;"
+        "mv predicted/All.targs.parsed.csv {params.dir}{wildcards.sample}.All.targs.parsed.csv ;"
+        "cp {input.mirnas} {params.dir} ;"
         "rm -r output/ ;"
         "rm -r predicted/ ;"
         "rm -r PARE/ ;"
         "rm -r genome/ ;"
         "rm -r PAGe/ ;"
-        
-        
-				
+             			
 
 # get miRNAs from the srnadesc pipeline (ShortStack result file)
 rule get_mirnas:
@@ -130,8 +166,8 @@ rule map_to_genome_using_STAR:
         RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",
         RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam.bai",
         RESULT_DIR + "star/{sample}_Log.final.out",
-	RESULT_DIR + "star/{sample}_Signal.Unique.str1.out.wig",
-        RESULT_DIR + "star/{sample}_Signal.UniqueMultiple.str1.out.wig",   
+	temp(RESULT_DIR + "star/{sample}_Signal.Unique.str1.out.wig"),
+        temp(RESULT_DIR + "star/{sample}_Signal.UniqueMultiple.str1.out.wig"),   
     message:"mapping the {wildcards.sample} reads to genome"
     params:
         prefix = RESULT_DIR + "star/{sample}_",
