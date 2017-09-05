@@ -5,7 +5,7 @@
 For one sample, from the genes predicted by sPARTA to be targets, gets their corresponding BED file of their coordinates
 
 Usage:
-python sparta_targets_to_bed_file.py -i All.libs.validated.uniq.csv -b ITAG3.0_gene_models.gff -o genes.bed
+python sparta_targets_to_bed_file.py -i All.libs.validated.uniq.csv -g ITAG3.0_gene_models.gff -o genes.bed
 """
 
 ##################
@@ -52,4 +52,5 @@ df = df[df["gene_id"].isin(target_genes)]
 # 5. score
 # 6. strand
 bed = df[["chr","start","end","gene_id","score","strand"]]
+new_starts = bed["start"] - 1
 bed.to_csv(args.out,sep="\t",index=False,header=False)
