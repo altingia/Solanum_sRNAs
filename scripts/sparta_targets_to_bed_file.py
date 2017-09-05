@@ -51,6 +51,14 @@ df = df[df["gene_id"].isin(target_genes)]
 # 4. name 
 # 5. score
 # 6. strand
+# to bed
 bed = df[["chr","start","end","gene_id","score","strand"]]
 new_starts = bed["start"] - 1
-bed.to_csv(args.out,sep="\t",index=False,header=False)
+bed1 = bed.copy()
+bed1["new_starts"] = new_starts
+bed1 = bed1.drop("start",1) # delete old start positions
+bed1.head()
+new_col_ordering = ["chr","new_starts","end","gene_id","score","strand"]
+bed = bed1[new_col_ordering]
+bed.head()
+bed.to_csv("parsed.gff",sep="\t",index=False,header=False)
