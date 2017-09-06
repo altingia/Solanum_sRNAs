@@ -21,6 +21,7 @@ BAMS = expand(RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",sample=
 BIGWIGS = expand(RESULT_DIR + "bigwig/{sample}_Signal.{u}.bw",sample=SAMPLES,u=["Unique","UniqueMultiple"])
 SPARTA = expand(RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv",sample=SAMPLES)
 MIRNAS = expand(RESULT_DIR + "miRNAs/{sample}.miRNAs.fa",sample=SAMPLES)
+TPLOTS = dynamic(expand(RESULT_DIR + "target_plots/{sample}/{{gene}}.png",sample=SAMPLES))
 MASTERS = [RESULT_DIR + f for f in ["Snakefile","config.yaml","environment.yaml"]]
 
 rule all:
@@ -29,6 +30,7 @@ rule all:
 		BIGWIGS,
 		SPARTA,
 		MIRNAS,
+		TPLOTS,
 		MASTERS
 	message:"all done!"
         shell:"rm -r {WORKING_DIR}"
@@ -61,33 +63,46 @@ rule copy_mirnas_to_results:
     shell:
         "cp {input} {output}"
 
-
 #############################
 # Make T-plots (target plots)
 ############################
+rule create_target_plots:
+    input:
+        cov = WORKING_DIR + "sparta/{sample}.coverage.txt",
+        bed = WORKING_DIR + "sparta/{sample}.targets.bed"
+    output:
+        dynamic(RESULT_DIR + "target_plots/{sample}/{gene}.png")
+    params:
+        dir = RESULT_DIR + "target_plots/{sample}/"
+    shell:
+        "Rscript --vanilla ../../scripts/create_target_plots.R "
+        "--coverage {input.cov} "
+        "--bedfile {input.bed} "
+        "--outdir {params.dir}"        
+
 rule calculate_coverage:
     input:
-        gff = WORKING_DIR + "gff/{sample}.targets.gff",
+        bed = WORKING_DIR + "sparta/{sample}.targets.bed",
         bam = RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam"
     output:
-        cov = RESULT_DIR + "coverage/{sample}.coverage.txt"
-    message:"
+        cov = WORKING_DIR + "sparta/{sample}.coverage.txt"
+    message:"calculating coverage for {wildcards.sample}"
     shell:
-        "bedtools coverage -header -s -d -a {input.gff} -b {input.bam} 
+        "samtools depth -b {input.bed} {input.bam} > {output}"
 
 rule get_target_genes:
     input:
         sparta = RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv",
         gff = config["refs"]["gff"]
     output:
-        WORKING_DIR + "gff/{sample}.targets.gff"
-    message:"Filtering {input.gff} to keep mRNA targets of {wildcards.sample}"
+        WORKING_DIR + "sparta/{sample}.targets.bed"
+    message:"Filtering {input.gff} and creates a BED file with {wildcards.sample} miRNA targets"
     shell:
         "python sparta_targets_to_parsed_bed.py -i {input} --gff -o {output}"
         
-###################
+########
 # sPARTA
-###################
+########
 rule sparta:
     input:
         genome = config["refs"]["genome"],
