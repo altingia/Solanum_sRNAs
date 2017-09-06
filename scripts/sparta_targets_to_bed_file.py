@@ -61,4 +61,4 @@ bed1.head()
 new_col_ordering = ["chr","new_starts","end","gene_id","score","strand"]
 bed = bed1[new_col_ordering]
 bed.head()
-bed.to_csv("parsed.gff",sep="\t",index=False,header=False)
+bed.to_csv(args.out,sep="\t",index=False,header=False)
