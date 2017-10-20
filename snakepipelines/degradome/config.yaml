@@ -42,4 +42,3 @@ star:
 sparta:
   genomefeature: "0" # 0 to predict targets in gene coding regions, 1 in intergenic regions
 
-

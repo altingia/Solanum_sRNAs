@@ -19,13 +19,19 @@ SAMPLES, = glob_wildcards(config["fastqdir"] + "{sample}.fastq.gz")
 #################
 BAMS = expand(RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",sample=SAMPLES)
 BIGWIGS = expand(RESULT_DIR + "bigwig/{sample}_Signal.{u}.bw",sample=SAMPLES,u=["Unique","UniqueMultiple"])
-SPARTA = expand(RESULT_DIR + "sparta/{sample}/All.libs.validated.uniq.csv",sample=SAMPLES)
+SPARTA = expand(RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv",sample=SAMPLES)
+MIRNAS = expand(RESULT_DIR + "miRNAs/{sample}.miRNAs.fa",sample=SAMPLES)
+TPLOTS = dynamic(expand(RESULT_DIR + "target_plots/{sample}/{{gene}}.png",sample=SAMPLES))
+MASTERS = [RESULT_DIR + f for f in ["Snakefile","config.yaml","environment.yaml"]]
 
 rule all:
 	input:
 		BAMS,
 		BIGWIGS,
-		SPARTA
+		SPARTA,
+		MIRNAS,
+		TPLOTS,
+		MASTERS
 	message:"all done!"
         shell:"rm -r {WORKING_DIR}"
    
@@ -38,19 +44,65 @@ rule all:
 ################################################
 rule copy_master_files:
     input:
-        "{sample}.miRNAs.fasta",
         "Snakefile",
         "config.yaml",
         "environment.yaml"
     output:
-        RESULT_DIR + "miRNAs/{sample}.miRNAs.fasta"
+        RESULT_DIR + "Snakefile",
+        RESULT_DIR + "config.yaml",
+        RESULT_DIR + "environment.yaml"
     message:"copying master files"
     shell:
         "cp {input} {RESULT_DIR}"
 
-###################
+rule copy_mirnas_to_results:
+    input:
+        "{sample}.miRNAs.fa"
+    output:
+        RESULT_DIR + "miRNAs/{sample}.miRNAs.fa"
+    shell:
+        "cp {input} {output}"
+
+#############################
+# Make T-plots (target plots)
+############################
+rule create_target_plots:
+    input:
+        cov = WORKING_DIR + "sparta/{sample}.coverage.txt",
+        bed = WORKING_DIR + "sparta/{sample}.targets.bed"
+    output:
+        dynamic(RESULT_DIR + "target_plots/{sample}/{gene}.png")
+    params:
+        dir = RESULT_DIR + "target_plots/{sample}/"
+    shell:
+        "Rscript --vanilla ../../scripts/create_target_plots.R "
+        "--coverage {input.cov} "
+        "--bedfile {input.bed} "
+        "--outdir {params.dir}"        
+
+rule calculate_coverage:
+    input:
+        bed = WORKING_DIR + "sparta/{sample}.targets.bed",
+        bam = RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam"
+    output:
+        cov = WORKING_DIR + "sparta/{sample}.coverage.txt"
+    message:"calculating coverage for {wildcards.sample}"
+    shell:
+        "samtools depth -b {input.bed} {input.bam} > {output}"
+
+rule get_target_genes:
+    input:
+        sparta = RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv",
+        gff = config["refs"]["gff"]
+    output:
+        WORKING_DIR + "sparta/{sample}.targets.bed"
+    message:"Filtering {input.gff} and creates a BED file with {wildcards.sample} miRNA targets"
+    shell:
+        "python sparta_targets_to_parsed_bed.py -i {input} --gff -o {output}"
+        
+########
 # sPARTA
-###################
+########
 rule sparta:
     input:
         genome = config["refs"]["genome"],
@@ -58,7 +110,7 @@ rule sparta:
         mirnas = "{sample}.miRNAs.fa",
         lib = WORKING_DIR + "tally/{sample}.tag_count.txt"      
     output:
-        RESULT_DIR + "sparta/{sample}/All.libs.validated.uniq.csv"
+        RESULT_DIR + "sparta/{sample}/{sample}.All.libs.validated.uniq.csv"
     shadow: "shallow"
     params:
         genomefeature = config["sparta"]["genomefeature"],
@@ -75,16 +127,15 @@ rule sparta:
         "-libs {wildcards.sample}.tag_count.txt "
         "-tarPred "
         "-tarScore --tag2FASTA --map2DD --validate ;"
-        "mv output/All.libs.validated.uniq.csv {params.dir} ;"
-        "mv predicted/All.targs.parsed.csv {params.dir} ;"
+        "mv output/All.libs.validated.uniq.csv {params.dir}{wildcards.sample}.All.libs.validated.uniq.csv ;"
+        "mv predicted/All.targs.parsed.csv {params.dir}{wildcards.sample}.All.targs.parsed.csv ;"
+        "cp {input.mirnas} {params.dir} ;"
         "rm -r output/ ;"
         "rm -r predicted/ ;"
         "rm -r PARE/ ;"
         "rm -r genome/ ;"
         "rm -r PAGe/ ;"
-        
-        
-				
+             			
 
 # get miRNAs from the srnadesc pipeline (ShortStack result file)
 rule get_mirnas:
@@ -130,8 +181,8 @@ rule map_to_genome_using_STAR:
         RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam",
         RESULT_DIR + "star/{sample}_Aligned.sortedByCoord.out.bam.bai",
         RESULT_DIR + "star/{sample}_Log.final.out",
-	RESULT_DIR + "star/{sample}_Signal.Unique.str1.out.wig",
-        RESULT_DIR + "star/{sample}_Signal.UniqueMultiple.str1.out.wig",   
+	temp(RESULT_DIR + "star/{sample}_Signal.Unique.str1.out.wig"),
+        temp(RESULT_DIR + "star/{sample}_Signal.UniqueMultiple.str1.out.wig"),   
     message:"mapping the {wildcards.sample} reads to genome"
     params:
         prefix = RESULT_DIR + "star/{sample}_",
