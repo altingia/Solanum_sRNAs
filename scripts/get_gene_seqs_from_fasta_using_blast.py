@@ -46,7 +46,7 @@ for assembly in assemblies:
 		pass
 	else:
 		# make database
-		blastdb_command = "makeblastdb -in " + "assemblies/" + assembly + " -dbtype nucl"
+		blastdb_command = "makeblastdb -in " + args.assemblies + assembly + " -dbtype nucl"
 		subprocess.call(blastdb_command,shell=True)
 
 ######################
