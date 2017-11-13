@@ -13,18 +13,29 @@
 #   srnadesc: ShortStack result directory that contains one folder per sample (e.g. tomato accession) 
 #   output_folder: a path to a folder to store all plots and other analyses
 
-# Example of ShortStack directory structure
-# shortstack/
-#   sample1/
-#     Results.txt
-#     Counts.txt
-#     Unplaced.txt
+# Example of srnadesc directory structure
+# srnadesc_results/
+#   distri/
+#      sample1.original.txt
+#      sample1.trimmed.txt
+#      sample2.original.txt
+#      sample2.trimmed.txt
 #      ...
-#   sample2/
-#      Results.txt
-#      Counts.txt
-#      Unplaced.txt
-#      ...
+#   counts/
+#     sample1.counts.txt
+#     sample2.counts.txt
+#     ...
+#   shortstack/
+#     sample1/
+#       Results.txt
+#       Counts.txt
+#       Unplaced.txt
+#       ...
+#     sample2/
+#       Results.txt
+#       Counts.txt
+#       Unplaced.txt
+#       ...
 
 #######################################################################
 # accession to species
@@ -40,11 +51,12 @@ library(RColorBrewer)
 library(reshape2)
 library(ggplot2)
 library(optparse)
-library(tidyverse,quietly = T,warn.conflicts = F)
+library(tidyverse)
+library(data.table,warn.conflicts = F,quietly = T)
 
 # parse command line arguments
 option_list = list(
-  make_option(c("-s", "--shortstack"), type="character",action="store",help="Shortstack result directory",metavar="character"),
+  make_option(c("-s", "--srnadesc"), type="character",action="store",help="srnadesc pipeline result directory",metavar="character"),
   make_option(c("-o", "--outdir"), type="character",default="results/",help="output directory for results"),
   make_option(c("-a","--sample2annotation"),type="character",default=NULL,help="optional sample annotation file")
 ) 
@@ -54,7 +66,7 @@ args = parse_args(opt_parser)
 # print arguments
 print("These are the arguments you specified")
 print("#####################################")
-print(paste("Shortstack result directory",args$shortstack,sep = ":"))
+print(paste("Shortstack result directory",args$srnadesc,sep = ":"))
 print(paste("Where to store the results",args$outdir,sep = ":"))
 print(paste("Sample annotation file",args$sample2annotation,sep = ":"))
 print("#####################################")
@@ -65,24 +77,25 @@ dir.create(args$outdir,showWarnings = F)
 ############
 ## Load data
 ############
-accessions = list.dirs(args$shortstack,full.names = F,recursive = F)
+accessions = list.dirs(file.path(args$srnadesc,"shortstack"),full.names = F,recursive = F)
+sample2annotation = read.delim(args$sample2annotation,header=T,stringsAsFactors = F)
 
 #### Size distributions of small RNAs
-distri.originals = list.files(path="distri",pattern = "*original*",full.names = T)
-distri.trimmed = list.files(path="distri",patter = "*trimmed*",full.names = T)
+path2distri = file.path(args$srnadesc,"distri")
+distri.originals = list.files(path2distri,pattern = "*original*",full.names = T)
+distri.trimmed = list.files(path2distri,pattern = "*trimmed*",full.names = T)
 
-distri.originals = lapply(distri.originals,FUN = function(x){read.delim(x,header=T,stringsAsFactors = F)})
-distri.trimmed = lapply(distri.trimmed,FUN = function(x){read.delim(x,header=T,stringsAsFactors = F)})
+distri.originals = lapply(distri.originals,FUN = function(x){fread(x,data.table=FALSE, header=T,sep="\t")})
+distri.trimmed = lapply(distri.trimmed,FUN = function(x){fread(x,header=T,data.table=FALSE,sep="\t")})
 
 ##### ShortStack
 # list directories containing the ShortStack results.txt file
-shortstack.dirs = sapply(X = accessions,FUN = function(x) {file.path(args$shortstack,x,"results.txt")})
-
+path2shortstack = file.path(args$srnadesc,"shortstack")
+shortstack.dirs = sapply(X = accessions,FUN = function(x) {file.path(path2shortstack,x,"Results.txt")})
 
 # get all ShortStack results file
-shortstacks = map(shortstack.dirs,function(x) {read.delim(x,header = T,stringsAsFactors = F)})
+shortstacks = map(shortstack.dirs,function(x) {fread(x,data.table=FALSE,header = T,sep="\t")})
 
-#shortstacks = lapply(X = shortstack.dirs,FUN = function(x) {read.delim(x,header = T,stringsAsFactors = F)})
 for (i in seq_along(shortstacks)){
   colnames(shortstacks[[i]])[1] = "locus"
 }
@@ -92,6 +105,11 @@ for (i in seq_along(shortstacks)){
 ## small RNA length distribution
 ########################################
 all.sizes = list(distri.originals,distri.trimmed)
+
+#
+#freq_df <- function(df,percentage=T){
+  # reads a dataframe 
+#}
 
 # proportion
 for (j in seq_along(all.sizes)){
@@ -108,7 +126,8 @@ for (j in seq_along(all.sizes)){
 for (j in seq_along(all.sizes)){
   merged = Reduce(function(...) merge(...,by="length",all.x=T),all.sizes[[j]])
   m_merged = melt(merged,id.vars = "length",variable.name = "accession")
-  m_merged = left_join(m_merged,accession2species,by="accession")
+  m_merged$accession = as.character(m_merged$accession)
+  m_merged = left_join(m_merged,sample2annotation,by="accession")
   m_merged = m_merged[order(m_merged$species),]
   all.sizes[[j]] = m_merged
 }
@@ -128,7 +147,7 @@ for (i in seq_along(clusters)){
 
 # row bind all of these dfs
 all.clusters = plyr::ldply(clusters,data.frame)
-all.clusters = left_join(all.clusters,accession2species,by="accession")
+all.clusters = left_join(all.clusters,sample2annotation,by="accession")
 
 nClusters = all.clusters %>%
   group_by(accession,species) %>%
@@ -153,7 +172,8 @@ for (i in seq_along(accessions)){
 }
 all.dicerCalls = plyr::ldply(dicerCalls.tables,data.frame)
 
-dicerCalls %>%
+# number of clusters
+nDicerCalls = dicerCalls %>%
   group_by(accession,species) %>%
   summarise(l = length(value))
 
@@ -164,65 +184,70 @@ dicerCalls %>%
 all.dfs = plyr::ldply(shortstacks,data.frame,.id = "accession")
 m_shortstacks = melt(data = all.dfs,id.vars=c("accession","DicerCall"),measure.vars = "Reads",value.name = "counts")
 
-originalReadsFiles = list.files("counts",pattern = "*01_original*",full.names = T)
+path2counts = file.path(args$srnadesc,"counts")
+originalReadsFiles = list.files(path2counts,pattern = "*01_original*",full.names = T)
 originalReadsFiles = lapply(originalReadsFiles,FUN = function(x){read.delim(x,header = F,sep = "\t")})
 originalReadsFiles = plyr::ldply(originalReadsFiles,data.frame)
-colnames(originalReadsFiles) = c("accession","step","nb")
+colnames(originalReadsFiles) = c("accession","step","all","nr")
 
+# sum by cluster dicer call and accession
 rpmPerDicerCall = m_shortstacks %>%
   group_by(DicerCall,accession) %>%
   summarise(sum = sum(counts))
+
+# add total and non-redundant number of sRNAs to scale/normalise (RPM)
 rpmPerDicerCall = left_join(rpmPerDicerCall,originalReadsFiles,by="accession")
-rpmPerDicerCall = left_join(rpmPerDicerCall,accession2species,by="accession")
-rpmPerDicerCall = mutate(rpmPerDicerCall,rpm = sum / nb * 10^5)
+rpmPerDicerCall = left_join(rpmPerDicerCall,sample2annotation,by="accession")
+rpmPerDicerCall = dplyr::mutate(rpmPerDicerCall,rpm_all = sum / all * 10^5)
+rpmPerDicerCall = dplyr::mutate(rpmPerDicerCall,rpm_nr = sum / nr * 10^5)
 
 # for plotting (reordering levels)
 rpmPerDicerCall = rpmPerDicerCall[order(rpmPerDicerCall$species),]
 rpmPerDicerCall$accession = factor(rpmPerDicerCall$accession,levels = unique(rpmPerDicerCall$accession))
 
 
-#########################
+#################
 ## miRNA analysis
-########################
+#################
 
-##### select only miRNAs and merge by locus
-byLocus = shortstacks
-# rename column (add accession)
-for (i in seq_along(byLocus)){
-  byLocus[[i]] = filter(byLocus[[i]],MIRNA == "Y")
-  colNames = colnames(byLocus[[i]])[2:ncol(byLocus[[i]])]
-  sampleName = names(byLocus)[i]
-  newColNames = sapply(colNames,FUN = function(x){paste(x,sampleName,sep = ".")})
-  colnames(byLocus[[i]])[2:ncol(byLocus[[i]])] = newColNames
-}
-# reduce (recursively performs a full outer merge on the dataframes)
-byLocus = Reduce(function(...) merge(...,by="locus",all=T),byLocus)
-write.table(byLocus,file = "all_merged.byLocus.txt",quote = F,sep="\t",row.names = F)
-
-# same merge but with less column (only miRNA)
-# rename column (add accession)
-byLocus = shortstacks
-for (i in seq_along(byLocus)){
-  byLocus[[i]] = filter(byLocus[[i]],MIRNA == "Y")
-  colNames = colnames(byLocus[[i]])[2:ncol(byLocus[[i]])]
-  sampleName = names(byLocus)[i]
-  newColNames = sapply(colNames,FUN = function(x){paste(x,sampleName,sep = ".")})
-  colnames(byLocus[[i]])[2:ncol(byLocus[[i]])] = newColNames
-  byLocus[[i]] = byLocus[[i]][c(1,10)]
-}
-byLocus.short = Reduce(function(...) merge(...,by="locus",all=T),byLocus)
-write.table(byLocus.short,file = "all_merged.byLocus.shortened.txt",quote = F,sep="\t",row.names = F)
-
-#### Merge by mature miRNA sequence
-byMajorRNA = shortstacks
-for (i in seq_along(byMajorRNA)){
-  byMajorRNA[[i]] = filter(byMajorRNA[[i]],MIRNA == "Y")
-  byMajorRNA[[i]] = byMajorRNA[[i]][c(10)]
-}
-# merge all and then extracts only unique miRNAs
-byMajorRNA.all = unique(Reduce(function(...) merge(...,all=TRUE),byMajorRNA))
-byMajorRNA.all$length = sapply(byMajorRNA.all$MajorRNA,nchar)
-write.table(byMajorRNA.all,file = file.path(outdir,"all_merged.byMajorRNA.txt"),quote = F,sep="\t",row.names=F)
+# ##### select only miRNAs and merge by locus
+# byLocus = shortstacks
+# # rename column (add accession)
+# for (i in seq_along(byLocus)){
+#   byLocus[[i]] = filter(byLocus[[i]],MIRNA == "Y")
+#   colNames = colnames(byLocus[[i]])[2:ncol(byLocus[[i]])]
+#   sampleName = names(byLocus)[i]
+#   newColNames = sapply(colNames,FUN = function(x){paste(x,sampleName,sep = ".")})
+#   colnames(byLocus[[i]])[2:ncol(byLocus[[i]])] = newColNames
+# }
+# # reduce (recursively performs a full outer merge on the dataframes)
+# byLocus = Reduce(function(...) merge(...,by="locus",all=T),byLocus)
+# write.table(byLocus,file = "all_merged.byLocus.txt",quote = F,sep="\t",row.names = F)
+# 
+# # same merge but with less column (only miRNA)
+# # rename column (add accession)
+# byLocus = shortstacks
+# for (i in seq_along(byLocus)){
+#   byLocus[[i]] = filter(byLocus[[i]],MIRNA == "Y")
+#   colNames = colnames(byLocus[[i]])[2:ncol(byLocus[[i]])]
+#   sampleName = names(byLocus)[i]
+#   newColNames = sapply(colNames,FUN = function(x){paste(x,sampleName,sep = ".")})
+#   colnames(byLocus[[i]])[2:ncol(byLocus[[i]])] = newColNames
+#   byLocus[[i]] = byLocus[[i]][c(1,10)]
+# }
+# byLocus.short = Reduce(function(...) merge(...,by="locus",all=T),byLocus)
+# write.table(byLocus.short,file = "all_merged.byLocus.shortened.txt",quote = F,sep="\t",row.names = F)
+# 
+# #### Merge by mature miRNA sequence
+# byMajorRNA = shortstacks
+# for (i in seq_along(byMajorRNA)){
+#   byMajorRNA[[i]] = filter(byMajorRNA[[i]],MIRNA == "Y")
+#   byMajorRNA[[i]] = byMajorRNA[[i]][c(10)]
+# }
+# # merge all and then extracts only unique miRNAs
+# byMajorRNA.all = unique(Reduce(function(...) merge(...,all=TRUE),byMajorRNA))
+# byMajorRNA.all$length = sapply(byMajorRNA.all$MajorRNA,nchar)
+# write.table(byMajorRNA.all,file = file.path(outdir,"all_merged.byMajorRNA.txt"),quote = F,sep="\t",row.names=F)
 
 
 #####################################################
@@ -250,8 +275,8 @@ for (j in seq_along(all.sizes)){
       labs(x = "Accession",y = "% of total small RNAs") +
       scale_fill_brewer(palette = "Set3") +
       my_theme
-    ggsave(filename = file.path(outdir,paste("size_",names(all.sizes[j]),".png",sep = "")),plot = g,width = 7,height = 5,dpi = 600)
-    ggsave(filename = file.path(outdir,paste("size_",names(all.sizes[j]),".svg",sep = "")),plot = g,width = 7,height = 5)
+    ggsave(filename = file.path(args$outdir,paste("size_",names(all.sizes[j]),".png",sep = "")),plot = g,width = 7,height = 5,dpi = 600)
+    ggsave(filename = file.path(args$outdir,paste("size_",names(all.sizes[j]),".svg",sep = "")),plot = g,width = 7,height = 5)
   } else {
     df = all.sizes[[j]]
     g2 <- ggplot(data=df,aes(x=length,y = value,fill=species)) +
@@ -260,11 +285,10 @@ for (j in seq_along(all.sizes)){
       labs(x = "Accession",y = "% of trimmed small RNAs") +
       scale_fill_brewer(palette = "Set3") +
       my_theme
-    ggsave(filename = file.path(outdir,paste("size_",names(all.sizes[j]),".png",sep = "")),plot = g2,width = 7,height = 5,dpi = 400)
-    ggsave(filename = file.path(outdir,paste("size_",names(all.sizes[j]),".svg",sep = "")),plot = g2,width = 7,height = 5)
+    ggsave(filename = file.path(args$outdir,paste("size_",names(all.sizes[j]),".png",sep = "")),plot = g2,width = 7,height = 5,dpi = 400)
+    ggsave(filename = file.path(args$outdir,paste("size_",names(all.sizes[j]),".svg",sep = "")),plot = g2,width = 7,height = 5)
   }
 }
-
 
 #### Dicer call fraction per accession
 p <- ggplot(data = all.dicerCalls,aes(x = accession,y = percent,fill=length)) +
@@ -273,8 +297,8 @@ p <- ggplot(data = all.dicerCalls,aes(x = accession,y = percent,fill=length)) +
   theme(axis.text.x = element_text(angle=0,hjust=0.5)) +
   my_theme
 print(p)  
-ggsave(filename = file.path(outdir,"fraction_dicer_call.svg"),plot = p,width = 7,height = 5)
-ggsave(filename = file.path(outdir,"fraction_dicer_call.png"),plot = p,width = 7,height = 5,dpi = 400)
+ggsave(filename = file.path(args$outdir,"fraction_dicer_call.svg"),plot = p,width = 7,height = 5)
+ggsave(filename = file.path(args$outdir,"fraction_dicer_call.png"),plot = p,width = 7,height = 5,dpi = 400)
 
 #### Number of small RNA clusters per accession
 p1 <- ggplot(data = nClusters,aes(x = accession,y = nb,fill=species)) +
@@ -284,12 +308,13 @@ p1 <- ggplot(data = nClusters,aes(x = accession,y = nb,fill=species)) +
   labs(x = "Accession",y = "Number of small RNA clusters") +
   my_theme
 print(p1)  
-ggsave(filename = file.path(outdir,"number_of_small_rnas_per_accession.svg"),plot = p1,width = 7,height = 5)
-ggsave(filename = file.path(outdir,"number_of_small_rnas_per_accession.png"),plot = p1,width = 7,height = 5,dpi=400)
+ggsave(filename = file.path(args$outdir,"number_of_small_rnas_per_accession.svg"),plot = p1,width = 7,height = 5)
+ggsave(filename = file.path(args$outdir,"number_of_small_rnas_per_accession.png"),plot = p1,width = 7,height = 5,dpi=400)
 
 
 #### Cluster abundance per DicerCall 
-p2 <- ggplot(data = rpmPerDicerCall,aes(x = DicerCall,y = rpm,fill=species)) +
+# all
+p2 <- ggplot(data = rpmPerDicerCall,aes(x = DicerCall,y = rpm_all,fill=species)) +
   geom_bar(stat="identity",colour="black") +
   facet_wrap(~ accession,nrow = 4) +
   scale_fill_brewer(palette = "Set3",guide = guide_legend(title = "Species")) +
@@ -299,9 +324,22 @@ p2 <- ggplot(data = rpmPerDicerCall,aes(x = DicerCall,y = rpm,fill=species)) +
   theme(axis.text.x = element_text(angle=0,hjust=0.5)) +
   my_theme
 print(p2)
-ggsave(filename = file.path(outdir,"cluster_abundance_per_dicercall.svg"),plot = p2,width = 7,height = 5)
-ggsave(filename = file.path(outdir,"cluster_abundance_per_dicercall.png"),plot = p2,width = 7,height = 5,dpi=400)
+ggsave(filename = file.path(args$outdir,"cluster_abundance_per_dicercall.svg"),plot = p2,width = 7,height = 5)
+ggsave(filename = file.path(args$outdir,"cluster_abundance_per_dicercall.png"),plot = p2,width = 7,height = 5,dpi=400)
 
+# non-redundant
+p3 <- ggplot(data = rpmPerDicerCall,aes(x = DicerCall,y = rpm_nr,fill=species)) +
+  geom_bar(stat="identity",colour="black") +
+  facet_wrap(~ accession,nrow = 4) +
+  scale_fill_brewer(palette = "Set3",guide = guide_legend(title = "Species")) +
+  labs(x = "Length of small RNA cluster ('Dicer call')",y = expression("Small RNA cluster abundance (RPM x 10^5)")) +
+  scale_y_continuous(limits=c(0,30000)) +
+  theme(axis.title.x = element_blank()) +
+  theme(axis.text.x = element_text(angle=0,hjust=0.5)) +
+  my_theme
+print(p3)
+ggsave(filename = file.path(args$outdir,"cluster_abundance_per_dicercall_nr.svg"),plot = p3,width = 7,height = 5)
+ggsave(filename = file.path(args$outdir,"cluster_abundance_per_dicercall_nr.png"),plot = p3,width = 7,height = 5,dpi=400)
 
 
 
