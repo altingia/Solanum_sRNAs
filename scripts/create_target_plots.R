@@ -92,8 +92,10 @@ for (i in seq_along(genes)){
     theme(plot.title = element_text(size=10))
 
     
-  # save plot
+  # save plot (png and pdf)
   ggsave(file.path(args$outdir,paste(selected_gene,".png")),plot=g,width=9,height=8,units = "cm")
+  ggsave(file.path(args$outdir,paste(selected_gene,".pdf")),plot=g,width=9,height=8)
+  
 }
 
 
